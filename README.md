@@ -1,6 +1,11 @@
 # metapeek
 
-CLI tool for analyzing meta tags and social sharing readiness. Powered by [metapeek](https://metapeek.icjia.app).
+CLI tool for analyzing meta tags and social sharing readiness.
+
+This is the command-line interface for [metapeek](https://metapeek.icjia.app) — the web-based meta tag analyzer. Use this CLI for CI/CD pipelines, scripts, or quick terminal analysis.
+
+**Web app:** https://metapeek.icjia.app
+**Web app source:** https://github.com/ICJIA/icjia-metapeek
 
 ## Platform Support
 
@@ -20,7 +25,7 @@ metapeek requires a Unix shell (bash). It runs on:
 git clone https://github.com/ICJIA/metapeek-cli.git
 cd metapeek-cli
 chmod +x metapeek
-./metapeek https://example.com
+./metapeek https://github.com
 ```
 
 ### Option 2: Clone and add to your PATH
@@ -107,11 +112,11 @@ metapeek — https://r3.illinois.gov
 **A site with issues:**
 
 ```bash
-metapeek https://example.com
+metapeek https://github.com
 ```
 
 ```
-metapeek — https://example.com
+metapeek — https://github.com
 
   Score: 30/100 (F)
 
@@ -145,7 +150,7 @@ metapeek — https://example.com
 
   ╭─ Copy for LLM ──────────────────────────────────────────────────────────────────╮
   │                                                                                 │
-  │  URL: https://example.com                                                       │
+  │  URL: https://github.com                                                       │
   │  Score: 30/100 (F)                                                              │
   │                                                                                 │
   │  Issues:                                                                        │
@@ -190,19 +195,19 @@ Options:
 ### JSON output
 
 ```bash
-metapeek https://example.com --json
+metapeek https://github.com --json
 ```
 
 ### Markdown output
 
 ```bash
-metapeek https://example.com --format markdown
+metapeek https://github.com --format markdown
 ```
 
 ### Piping
 
 ```bash
-metapeek https://example.com --json | jq .score.grade
+metapeek https://github.com --json | jq .score.grade
 ```
 
 ## Exit Codes
@@ -214,6 +219,53 @@ Every run prints its exit status at the end of the output (e.g. `✓ Pass (exit 
 | 0    | Grade A or B                                                  |
 | 1    | Grade C, D, or F                                              |
 | 2    | Error (invalid URL, missing deps, network failure, API error) |
+
+## Testing
+
+metapeek includes a comprehensive test suite covering all features and edge cases.
+
+### Run Tests
+
+```bash
+# Run all tests (includes live API calls)
+./test/run.sh
+
+# Run only offline tests (skip network-dependent tests)
+./test/run.sh --offline
+```
+
+### Test Coverage
+
+The test suite includes **56 tests** across 7 categories:
+
+- **Flags & argument parsing** (13 tests) — validates all CLI options, version output, help text
+- **Error handling** (13 tests) — invalid URLs, missing arguments, unknown options, unreachable APIs
+- **URL normalization** (5 tests) — protocol prepending, validation of http/https/ftp/mailto/file schemes
+- **Live API — terminal output** (10 tests) — score display, category rows, issues section, LLM copy block, exit hints
+- **Live API — JSON output** (3 tests) — valid JSON structure, expected fields, no ANSI code leakage
+- **Live API — markdown output** (3 tests) — heading format, table structure, result line
+- **No-color output** (1 test) — ANSI escape sequence stripping
+- **Security** (8 tests) — shell injection prevention, control character sanitization, protocol restrictions
+
+Tests use real API calls to `https://r3.illinois.gov` (grade A, no issues) and `https://github.com` (grade B, warnings for title/description length and trailing slash inconsistency) to verify output formatting.
+
+### Test Output
+
+Passing tests show a green checkmark (✓), failed tests show details:
+
+```
+  metapeek test suite
+  ═══════════════════
+
+  Flags & argument parsing
+  ────────────────────────
+  ✓ --help exits 0
+  ✓ --version prints version
+  ...
+
+  ═══════════════════
+  56 passed (56 total)
+```
 
 ## License
 

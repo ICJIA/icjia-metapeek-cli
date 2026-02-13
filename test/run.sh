@@ -134,7 +134,7 @@ assert_exit "--format without value exits 2" 2 "$METAPEEK" --format
 assert_exit "--api-url without value exits 2" 2 "$METAPEEK" --api-url
 
 
-assert_exit "bad API URL exits 2" 2 "$METAPEEK" --no-spinner --api-url "http://localhost:1" "https://example.com"
+assert_exit "bad API URL exits 2" 2 "$METAPEEK" --no-spinner --api-url "http://localhost:1" "https://github.com"
 
 echo ""
 
@@ -149,18 +149,18 @@ if [[ "$OFFLINE" == true ]]; then
 else
   # Bare domain should be normalized to https:// and work
   set +e
-  output=$("$METAPEEK" --no-spinner --no-color "example.com" 2>&1)
+  output=$("$METAPEEK" --no-spinner --no-color "github.com" 2>&1)
   exit_code=$?
   set -e
-  if echo "$output" | grep -q "https://example.com"; then
+  if echo "$output" | grep -q "https://github.com"; then
     pass "bare domain gets https:// prepended"
   else
-    fail "bare domain gets https:// prepended" "output did not contain https://example.com"
+    fail "bare domain gets https:// prepended" "output did not contain https://github.com"
   fi
 
   # http:// should pass local validation (API may still reject it)
   set +e
-  errout=$("$METAPEEK" --no-spinner --no-color "http://example.com" 2>&1 >/dev/null)
+  errout=$("$METAPEEK" --no-spinner --no-color "http://github.com" 2>&1 >/dev/null)
   exit_code=$?
   set -e
   if echo "$errout" | grep -q "only http and https"; then
@@ -171,8 +171,8 @@ else
 fi
 
 # Protocol rejection (no network needed)
-assert_exit "ftp:// rejected" 2 "$METAPEEK" "ftp://example.com"
-assert_exit "mailto: rejected" 2 "$METAPEEK" "mailto:user@example.com"
+assert_exit "ftp:// rejected" 2 "$METAPEEK" "ftp://github.com"
+assert_exit "mailto: rejected" 2 "$METAPEEK" "mailto:user@github.com"
 assert_exit "file:// rejected" 2 "$METAPEEK" "file:///etc/passwd"
 
 echo ""
@@ -189,10 +189,10 @@ if [[ "$OFFLINE" == true ]]; then
   skip "terminal output contains issues count (requires network)"
   skip "terminal output contains timing (requires network)"
   skip "terminal output contains exit hint (requires network)"
-  skip "example.com exits 1 (requires network)"
-  skip "example.com shows issues section (requires network)"
-  skip "example.com shows LLM copy block (requires network)"
-  skip "example.com shows fail exit hint (requires network)"
+  skip "github.com exits 0 (requires network)"
+  skip "github.com shows issues section (requires network)"
+  skip "github.com shows LLM copy block (requires network)"
+  skip "github.com shows pass exit hint (requires network)"
 else
   # Grade A site
   set +e
@@ -236,34 +236,34 @@ else
     fail "terminal output contains pass exit hint" "missing exit hint"
   fi
 
-  # Grade F site
+  # Grade B site with warnings
   set +e
-  output=$("$METAPEEK" --no-spinner --no-color "https://example.com" 2>&1)
+  output=$("$METAPEEK" --no-spinner --no-color "https://github.com" 2>&1)
   exit_code=$?
   set -e
 
-  if [[ "$exit_code" -eq 1 ]]; then
-    pass "example.com exits 1 (grade C/D/F)"
+  if [[ "$exit_code" -eq 0 ]]; then
+    pass "github.com exits 0 (grade A/B with warnings)"
   else
-    fail "example.com exits 1 (grade C/D/F)" "got exit $exit_code"
+    fail "github.com exits 0 (grade A/B with warnings)" "got exit $exit_code"
   fi
 
   if echo "$output" | grep -q "Issues:"; then
-    pass "example.com shows issues section"
+    pass "github.com shows issues section"
   else
-    fail "example.com shows issues section" "missing issues"
+    fail "github.com shows issues section" "missing issues"
   fi
 
   if echo "$output" | grep -q "Copy for LLM"; then
-    pass "example.com shows LLM copy block"
+    pass "github.com shows LLM copy block"
   else
-    fail "example.com shows LLM copy block" "missing LLM block"
+    fail "github.com shows LLM copy block" "missing LLM block"
   fi
 
-  if echo "$output" | grep -q "Fail (exit 1)"; then
-    pass "example.com shows fail exit hint"
+  if echo "$output" | grep -q "Pass (exit 0)"; then
+    pass "github.com shows pass exit hint"
   else
-    fail "example.com shows fail exit hint" "missing exit hint"
+    fail "github.com shows pass exit hint" "missing exit hint"
   fi
 fi
 
@@ -280,7 +280,7 @@ if [[ "$OFFLINE" == true ]]; then
   skip "JSON mode does not contain ANSI codes (requires network)"
 else
   set +e
-  output=$("$METAPEEK" --no-spinner "https://example.com" --json 2>/dev/null)
+  output=$("$METAPEEK" --no-spinner "https://github.com" --json 2>/dev/null)
   exit_code=$?
   set -e
 
@@ -316,7 +316,7 @@ if [[ "$OFFLINE" == true ]]; then
   skip "markdown output contains result line (requires network)"
 else
   set +e
-  output=$("$METAPEEK" --no-spinner --no-color "https://example.com" --format markdown 2>/dev/null)
+  output=$("$METAPEEK" --no-spinner --no-color "https://github.com" --format markdown 2>/dev/null)
   set -e
 
   if echo "$output" | grep -q "^# metapeek"; then
@@ -349,7 +349,7 @@ if [[ "$OFFLINE" == true ]]; then
   skip "--no-color strips ANSI codes (requires network)"
 else
   set +e
-  output=$("$METAPEEK" --no-spinner --no-color "https://example.com" 2>/dev/null)
+  output=$("$METAPEEK" --no-spinner --no-color "https://github.com" 2>/dev/null)
   set -e
 
   if echo "$output" | grep -q $'\033'; then
