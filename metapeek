@@ -260,7 +260,7 @@ RESPONSE=$(echo "$RAW" | sed '$d')
 stop_spinner
 
 if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
-  MSG=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null)
+  MSG=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null | sanitize)
   if [[ -n "$MSG" ]]; then
     echo "Error: $MSG" >&2
   else
