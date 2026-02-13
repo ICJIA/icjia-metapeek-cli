@@ -49,7 +49,7 @@ usage() {
     --json              Output raw JSON
     --format <type>     Output format: terminal (default) or markdown
     --api-url <url>     Override API endpoint
-    --api-key <key>     API key for authenticated endpoints
+
     --no-color          Disable colored output
     --no-spinner        Disable loading spinner
     -V, --version       Show version
@@ -63,7 +63,7 @@ URL=""
 JSON_MODE=false
 FORMAT="terminal"
 API_URL="$DEFAULT_API_URL"
-API_KEY=""
+
 NO_COLOR=false
 NO_SPINNER=false
 
@@ -78,9 +78,7 @@ while [[ $# -gt 0 ]]; do
     --api-url)
       [[ $# -lt 2 ]] && { echo "Error: --api-url requires an argument" >&2; exit 2; }
       API_URL="$2"; shift 2 ;;
-    --api-key)
-      [[ $# -lt 2 ]] && { echo "Error: --api-key requires an argument" >&2; exit 2; }
-      API_KEY="$2"; shift 2 ;;
+
     --no-color)   NO_COLOR=true; shift ;;
     --no-spinner) NO_SPINNER=true; shift ;;
     -*)
@@ -182,9 +180,6 @@ check_deps
 start_spinner
 
 CURL_ARGS=(-s -w "\n%{http_code}" -H "Accept: application/json")
-if [[ -n "$API_KEY" ]]; then
-  CURL_ARGS+=(-H "Authorization: Bearer $API_KEY")
-fi
 
 ENCODED_URL=$(printf '%s' "$URL" | jq -sRr @uri)
 ENDPOINT="${API_URL}?url=${ENCODED_URL}"

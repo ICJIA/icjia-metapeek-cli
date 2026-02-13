@@ -103,7 +103,7 @@ assert_stdout_contains "--help shows banner" "metapeek" "$METAPEEK" --help
 assert_stdout_contains "--help shows --json option" "\-\-json" "$METAPEEK" --help
 assert_stdout_contains "--help shows --format option" "\-\-format" "$METAPEEK" --help
 assert_stdout_contains "--help shows --api-url option" "\-\-api-url" "$METAPEEK" --help
-assert_stdout_contains "--help shows --api-key option" "\-\-api-key" "$METAPEEK" --help
+
 assert_stdout_contains "--help shows --no-color option" "\-\-no-color" "$METAPEEK" --help
 assert_stdout_contains "--help shows --no-spinner option" "\-\-no-spinner" "$METAPEEK" --help
 
@@ -132,7 +132,7 @@ assert_stderr_contains "extra arg shows error" "unexpected argument" "$METAPEEK"
 
 assert_exit "--format without value exits 2" 2 "$METAPEEK" --format
 assert_exit "--api-url without value exits 2" 2 "$METAPEEK" --api-url
-assert_exit "--api-key without value exits 2" 2 "$METAPEEK" --api-key
+
 
 assert_exit "bad API URL exits 2" 2 "$METAPEEK" --no-spinner --api-url "http://localhost:1" "https://example.com"
 
@@ -396,19 +396,6 @@ else
   fail "sanitize preserves tabs and newlines" "got: $sanitize_tab"
 fi
 
-# --api-key should not appear in stdout
-if [[ "$OFFLINE" == true ]]; then
-  skip "API key not leaked in output (requires network)"
-else
-  set +e
-  output=$("$METAPEEK" --no-spinner --no-color --api-key "SECRET_TOKEN_12345" "https://example.com" 2>&1)
-  set -e
-  if echo "$output" | grep -q "SECRET_TOKEN_12345"; then
-    fail "API key not leaked in output" "found API key in stdout/stderr"
-  else
-    pass "API key not leaked in output"
-  fi
-fi
 
 # Non-https protocols rejected locally (no network request made)
 assert_exit "javascript: URL rejected" 2 "$METAPEEK" "javascript:alert(1)"

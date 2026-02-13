@@ -132,7 +132,7 @@ Options:
   --json              Output raw JSON
   --format <type>     Output format: terminal (default) or markdown
   --api-url <url>     Override API endpoint
-  --api-key <key>     API key for authenticated endpoints
+
   --no-color          Disable colored output
   --no-spinner        Disable loading spinner
   -V, --version       Show version
