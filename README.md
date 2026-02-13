@@ -220,6 +220,17 @@ Every run prints its exit status at the end of the output (e.g. `✓ Pass (exit 
 | 1    | Grade C, D, or F                                              |
 | 2    | Error (invalid URL, missing deps, network failure, API error) |
 
+## Security
+
+metapeek is hardened against common attack vectors:
+
+- **ANSI injection prevention** — All API responses (both success and error messages) are sanitized to strip control characters before display, preventing malicious terminal escape sequences
+- **Shell injection prevention** — URLs are properly quoted and encoded, preventing command injection via shell metacharacters
+- **Protocol validation** — Only `http://` and `https://` URLs are accepted; `javascript:`, `data:`, `file://`, `ftp://`, and other schemes are rejected
+- **Strict error handling** — The script runs with `set -euo pipefail` to catch errors early and prevent undefined behavior
+
+All security measures are validated by 8 dedicated security tests in the test suite.
+
 ## Testing
 
 metapeek includes a comprehensive test suite covering all features and edge cases.
