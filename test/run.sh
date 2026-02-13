@@ -319,7 +319,7 @@ else
   output=$("$METAPEEK" --no-spinner --no-color "https://example.com" --format markdown 2>/dev/null)
   set -e
 
-  if echo "$output" | grep -q "^# MetaPeek"; then
+  if echo "$output" | grep -q "^# metapeek"; then
     pass "markdown output contains heading"
   else
     fail "markdown output contains heading" "missing # heading"

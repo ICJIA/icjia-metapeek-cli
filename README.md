@@ -1,20 +1,66 @@
 # metapeek
 
-CLI tool for analyzing meta tags and social sharing readiness. Powered by [MetaPeek](https://metapeek.icjia.app).
+CLI tool for analyzing meta tags and social sharing readiness. Powered by [metapeek](https://metapeek.icjia.app).
+
+## Platform Support
+
+metapeek requires a Unix shell (bash). It runs on:
+
+- **macOS**
+- **Linux**
+- **Windows via WSL2**
+
+> **Windows note:** metapeek does not run in PowerShell or Command Prompt. You must use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with a Linux distribution (e.g. Ubuntu) to run on a Windows machine.
 
 ## Install
 
-Download the script to a directory in your `$PATH`:
+### Option 1: Clone and run directly
+
+```bash
+git clone https://github.com/ICJIA/metapeek-cli.git
+cd metapeek-cli
+chmod +x metapeek
+./metapeek https://example.com
+```
+
+### Option 2: Clone and add to your PATH
+
+```bash
+git clone https://github.com/ICJIA/metapeek-cli.git
+ln -s "$(pwd)/metapeek-cli/metapeek" /usr/local/bin/metapeek
+```
+
+### Option 3: Direct download
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ICJIA/metapeek-cli/main/metapeek -o /usr/local/bin/metapeek && chmod +x /usr/local/bin/metapeek
 ```
 
-Or clone and symlink:
+### Permissions
+
+If you get a `Permission denied` error when running `./metapeek`, set the executable bit:
 
 ```bash
-git clone https://github.com/ICJIA/metapeek-cli.git
-ln -s "$(pwd)/metapeek-cli/metapeek" /usr/local/bin/metapeek
+chmod +x metapeek
+```
+
+If `ln -s` or downloading to `/usr/local/bin` fails with a permissions error, use `sudo`:
+
+```bash
+sudo ln -s "$(pwd)/metapeek-cli/metapeek" /usr/local/bin/metapeek
+```
+
+Or install to your user-local bin directory instead (no `sudo` needed):
+
+```bash
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/metapeek-cli/metapeek" ~/.local/bin/metapeek
+```
+
+Make sure `~/.local/bin` is in your `PATH`. Add this to your `~/.zshrc` or `~/.bashrc` if it isn't:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## Requirements
@@ -40,7 +86,7 @@ metapeek https://r3.illinois.gov
 ```
 
 ```
-MetaPeek — https://r3.illinois.gov
+metapeek — https://r3.illinois.gov
 
   Score: 100/100 (A)
 
@@ -163,11 +209,11 @@ metapeek https://example.com --json | jq .score.grade
 
 Every run prints its exit status at the end of the output (e.g. `✓ Pass (exit 0) — grade A`), so the meaning is always visible.
 
-| Code | Meaning |
-|------|---------|
-| 0 | Grade A or B |
-| 1 | Grade C, D, or F |
-| 2 | Error (invalid URL, missing deps, network failure, API error) |
+| Code | Meaning                                                       |
+| ---- | ------------------------------------------------------------- |
+| 0    | Grade A or B                                                  |
+| 1    | Grade C, D, or F                                              |
+| 2    | Error (invalid URL, missing deps, network failure, API error) |
 
 ## License
 

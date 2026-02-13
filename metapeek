@@ -2,7 +2,11 @@
 set -euo pipefail
 
 VERSION="1.0.0"
+REPO_URL="https://github.com/ICJIA/metapeek-cli.git"
 DEFAULT_API_URL="https://metapeek.icjia.app/api/analyze"
+UPDATE_CACHE_DIR="${HOME}/.cache/metapeek"
+UPDATE_CACHE_FILE="${UPDATE_CACHE_DIR}/latest_version"
+UPDATE_CACHE_MAX_AGE=86400  # 24 hours
 
 # ── Dependency check ─────────────────────────────────────────────────────────
 
@@ -17,6 +21,66 @@ check_deps() {
     echo "  macOS:       brew install ${missing[*]}" >&2
     echo "  Ubuntu/WSL2: sudo apt install ${missing[*]}" >&2
     exit 2
+  fi
+}
+
+# ── Update check ─────────────────────────────────────────────────────────────
+# Compares cached remote version with local VERSION. The cache is refreshed in
+# the background so the check never blocks execution.
+
+version_gt() {
+  # Returns 0 (true) if $1 > $2 using sort -V
+  [[ "$1" != "$2" ]] && [[ "$(printf '%s\n%s' "$1" "$2" | sort -V | tail -1)" == "$1" ]]
+}
+
+refresh_update_cache() {
+  # Run in a detached background process — no impact on runtime.
+  # Uses git ls-remote to fetch the latest vX.Y.Z tag from the repo.
+  # Works with private repos since it uses existing git credentials.
+  (
+    mkdir -p "$UPDATE_CACHE_DIR"
+    local latest
+    latest=$(git ls-remote --tags --sort=-v:refname "$REPO_URL" 'v*' 2>/dev/null \
+      | head -1 | sed 's|.*refs/tags/v||;s/\^{}//')
+    if [[ -n "$latest" ]]; then
+      echo "$latest" > "$UPDATE_CACHE_FILE"
+    fi
+  ) &>/dev/null &
+  disown 2>/dev/null || true
+}
+
+check_for_update() {
+  # Skip in non-interactive / JSON / piped contexts
+  if [[ ! -t 2 ]] || [[ "$JSON_MODE" == true ]]; then
+    return
+  fi
+
+  local needs_refresh=true
+
+  if [[ -f "$UPDATE_CACHE_FILE" ]]; then
+    # Get cache file age (macOS + Linux compatible)
+    local file_mtime now cache_age
+    file_mtime=$(stat -f %m "$UPDATE_CACHE_FILE" 2>/dev/null) \
+      || file_mtime=$(stat -c %Y "$UPDATE_CACHE_FILE" 2>/dev/null) \
+      || file_mtime=0
+    now=$(date +%s)
+    cache_age=$(( now - file_mtime ))
+
+    if [[ $cache_age -lt $UPDATE_CACHE_MAX_AGE ]]; then
+      needs_refresh=false
+    fi
+
+    local cached_version
+    cached_version=$(cat "$UPDATE_CACHE_FILE" 2>/dev/null)
+    if [[ -n "$cached_version" ]] && version_gt "$cached_version" "$VERSION"; then
+      echo "" >&2
+      printf '  %s⬆ Update available: %s → %s%s\n' "$YELLOW" "$VERSION" "$cached_version" "$RESET" >&2
+      printf '  %sRun: cd <metapeek-cli dir> && git pull%s\n' "$DIM" "$RESET" >&2
+    fi
+  fi
+
+  if [[ "$needs_refresh" == true ]]; then
+    refresh_update_cache
   fi
 }
 
@@ -269,7 +333,7 @@ status_icon() {
 
 format_terminal() {
   # Header
-  printf '%sMetaPeek%s — %s%s%s\n' "$BOLD" "$RESET" "$CYAN" "$ANALYZED_URL" "$RESET"
+  printf '%smetapeek%s — %s%s%s\n' "$BOLD" "$RESET" "$CYAN" "$ANALYZED_URL" "$RESET"
   echo ""
 
   # Score line
@@ -358,12 +422,65 @@ format_terminal() {
   echo ""
 }
 
+# Word-wrap a line at a max width, preserving leading indent on continuation lines.
+# Usage: wrap_line "text" max_width indent
+# Outputs one or more lines to stdout.
+wrap_line() {
+  local text="$1" max_width="$2" indent="$3"
+  if [[ ${#text} -le $max_width ]]; then
+    echo "$text"
+    return
+  fi
+  local pos=0 remaining="$text"
+  local first=true
+  while [[ ${#remaining} -gt 0 ]]; do
+    local width=$max_width
+    if [[ "$first" != true ]]; then
+      width=$(( max_width - ${#indent} ))
+    fi
+    if [[ ${#remaining} -le $width ]]; then
+      if [[ "$first" == true ]]; then
+        echo "$remaining"
+      else
+        echo "${indent}${remaining}"
+      fi
+      break
+    fi
+    # Find last space within width
+    local chunk="${remaining:0:$width}"
+    local break_at=-1
+    local i
+    for (( i=${#chunk}-1; i>=0; i-- )); do
+      if [[ "${chunk:$i:1}" == " " ]]; then
+        break_at=$i
+        break
+      fi
+    done
+    if [[ $break_at -le 0 ]]; then
+      # No space found — hard break
+      break_at=$width
+    fi
+    if [[ "$first" == true ]]; then
+      echo "${remaining:0:$break_at}"
+      first=false
+    else
+      echo "${indent}${remaining:0:$break_at}"
+    fi
+    remaining="${remaining:$break_at}"
+    # Strip leading space from next segment
+    remaining="${remaining# }"
+  done
+}
+
+# Max content width: 120 total box width - 8 chars of box chrome (  │  ...  │)
+LLM_MAX_CONTENT=112
+
 build_llm_block() {
-  local content_lines=()
-  content_lines+=("URL: $ANALYZED_URL")
-  content_lines+=("Score: $OVERALL/100 ($GRADE)")
-  content_lines+=("")
-  content_lines+=("Issues:")
+  local raw_lines=()
+  raw_lines+=("URL: $ANALYZED_URL")
+  raw_lines+=("Score: $OVERALL/100 ($GRADE)")
+  raw_lines+=("")
+  raw_lines+=("Issues:")
 
   for i in "${!CAT_KEYS[@]}"; do
     local key="${CAT_KEYS[$i]}"
@@ -381,14 +498,33 @@ build_llm_block() {
     for (( j=0; j<issue_count; j++ )); do
       local issue
       issue=$(jq_safe ".score.categories.${key}.issues[$j]")
-      content_lines+=("- $issue")
+      raw_lines+=("- $issue")
     done
     if [[ -n "$suggestion" ]]; then
-      content_lines+=("  Fix: $suggestion")
+      raw_lines+=("  Fix: $suggestion")
     fi
   done
 
-  # Find max line length
+  # Word-wrap into final content lines
+  local content_lines=()
+  for raw in "${raw_lines[@]}"; do
+    if [[ -z "$raw" ]]; then
+      content_lines+=("")
+      continue
+    fi
+    # Detect leading indent for continuation lines
+    local indent=""
+    if [[ "$raw" == "- "* ]]; then
+      indent="  "
+    elif [[ "$raw" == "  Fix: "* ]]; then
+      indent="  "
+    fi
+    while IFS= read -r wrapped; do
+      content_lines+=("$wrapped")
+    done < <(wrap_line "$raw" "$LLM_MAX_CONTENT" "$indent")
+  done
+
+  # Find max line length (capped by wrapping, but needed for padding)
   local max_len=0
   for line in "${content_lines[@]}"; do
     local len=${#line}
@@ -428,7 +564,7 @@ status_emoji() {
 }
 
 format_markdown() {
-  printf '# MetaPeek — %s\n\n' "$ANALYZED_URL"
+  printf '# metapeek — %s\n\n' "$ANALYZED_URL"
   printf '**Score:** %s/100 (**%s**)\n\n' "$OVERALL" "$GRADE"
 
   # Table
@@ -535,6 +671,8 @@ else
   format_terminal
 fi
 
-# ── Exit code ────────────────────────────────────────────────────────────────
+# ── Update check & exit code ──────────────────────────────────────────────────
+
+check_for_update
 
 [[ "$GRADE" == "A" || "$GRADE" == "B" ]] && exit 0 || exit 1
