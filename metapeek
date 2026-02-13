@@ -1,0 +1,545 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="1.0.0"
+DEFAULT_API_URL="https://metapeek.icjia.app/api/analyze"
+
+# ── Dependency check ─────────────────────────────────────────────────────────
+
+check_deps() {
+  local missing=()
+  command -v curl >/dev/null 2>&1 || missing+=(curl)
+  command -v jq   >/dev/null 2>&1 || missing+=(jq)
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "Error: missing required dependencies: ${missing[*]}" >&2
+    echo "" >&2
+    echo "Install them:" >&2
+    echo "  macOS:       brew install ${missing[*]}" >&2
+    echo "  Ubuntu/WSL2: sudo apt install ${missing[*]}" >&2
+    exit 2
+  fi
+}
+
+# ── Banner ───────────────────────────────────────────────────────────────────
+
+banner() {
+  if [[ -t 1 ]]; then
+    local c=$'\033[36m' b=$'\033[1m' d=$'\033[2m' r=$'\033[0m'
+  else
+    local c="" b="" d="" r=""
+  fi
+  cat <<EOF
+
+  ${c}┌┬┐┌─┐┌┬┐┌─┐┌─┐┌─┐┌─┐┬┌─${r}
+  ${c}│││├┤  │ ├─┤├─┘├┤ ├┤ ├┴┐${r}
+  ${c}┴ ┴└─┘ ┴ ┴ ┴┴  └─┘└─┘┴ ┴${r}  ${b}v${VERSION}${r}
+  ${d}meta tag analyzer${r}
+
+EOF
+}
+
+# ── Usage / Help ─────────────────────────────────────────────────────────────
+
+usage() {
+  banner
+  cat <<'USAGE'
+  Usage: metapeek <url> [options]
+
+  Options:
+    --json              Output raw JSON
+    --format <type>     Output format: terminal (default) or markdown
+    --api-url <url>     Override API endpoint
+    --api-key <key>     API key for authenticated endpoints
+    --no-color          Disable colored output
+    --no-spinner        Disable loading spinner
+    -V, --version       Show version
+    -h, --help          Show help
+USAGE
+}
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+
+URL=""
+JSON_MODE=false
+FORMAT="terminal"
+API_URL="$DEFAULT_API_URL"
+API_KEY=""
+NO_COLOR=false
+NO_SPINNER=false
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)    usage; exit 0 ;;
+    -V|--version) echo "metapeek $VERSION"; exit 0 ;;
+    --json)       JSON_MODE=true; shift ;;
+    --format)
+      [[ $# -lt 2 ]] && { echo "Error: --format requires an argument" >&2; exit 2; }
+      FORMAT="$2"; shift 2 ;;
+    --api-url)
+      [[ $# -lt 2 ]] && { echo "Error: --api-url requires an argument" >&2; exit 2; }
+      API_URL="$2"; shift 2 ;;
+    --api-key)
+      [[ $# -lt 2 ]] && { echo "Error: --api-key requires an argument" >&2; exit 2; }
+      API_KEY="$2"; shift 2 ;;
+    --no-color)   NO_COLOR=true; shift ;;
+    --no-spinner) NO_SPINNER=true; shift ;;
+    -*)
+      echo "Error: unknown option \"$1\"" >&2
+      echo "Run 'metapeek --help' for usage." >&2
+      exit 2 ;;
+    *)
+      if [[ -z "$URL" ]]; then
+        URL="$1"
+      else
+        echo "Error: unexpected argument \"$1\"" >&2
+        exit 2
+      fi
+      shift ;;
+  esac
+done
+
+if [[ -z "$URL" ]]; then
+  echo "Error: missing required argument <url>" >&2
+  echo "Run 'metapeek --help' for usage." >&2
+  exit 2
+fi
+
+# ── URL normalization & validation ───────────────────────────────────────────
+
+# Reject non-http(s) protocols
+if [[ "$URL" =~ ^[a-zA-Z]+:// && ! "$URL" =~ ^https?:// ]]; then
+  echo "Error: invalid URL \"$URL\" (only http and https are supported)" >&2
+  exit 2
+fi
+
+# Prepend https:// if no protocol
+if [[ ! "$URL" =~ ^https?:// ]]; then
+  URL="https://$URL"
+fi
+
+# ── Sanitize helper ──────────────────────────────────────────────────────────
+# Strip ASCII control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F)
+# from API response strings to prevent ANSI injection from untrusted data.
+# Preserves tabs (0x09) and newlines (0x0A, 0x0D).
+
+sanitize() {
+  LC_ALL=C tr -d '\000-\010\013\014\016-\037\177'
+}
+
+# Safe jq extraction: decode JSON + strip control characters
+jq_safe() {
+  echo "$RESPONSE" | jq -r "$1" | sanitize
+}
+
+# ── Color helpers ────────────────────────────────────────────────────────────
+
+setup_colors() {
+  if [[ "$NO_COLOR" == true ]] || [[ ! -t 1 ]]; then
+    BOLD="" RESET="" RED="" GREEN="" YELLOW="" CYAN="" DIM=""
+  else
+    BOLD=$'\033[1m'  RESET=$'\033[0m'
+    RED=$'\033[31m'  GREEN=$'\033[32m' YELLOW=$'\033[33m' CYAN=$'\033[36m'
+    DIM=$'\033[2m'
+  fi
+}
+
+setup_colors
+
+# ── Spinner ──────────────────────────────────────────────────────────────────
+
+SPINNER_PID=""
+
+start_spinner() {
+  if [[ "$NO_SPINNER" == true ]] || [[ "$JSON_MODE" == true ]] || [[ ! -t 2 ]]; then
+    return
+  fi
+  local chars="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+  (
+    while true; do
+      for (( i=0; i<${#chars}; i++ )); do
+        printf "\r  %s Analyzing %s..." "${chars:$i:1}" "$URL" >&2
+        sleep 0.08
+      done
+    done
+  ) &
+  SPINNER_PID=$!
+}
+
+stop_spinner() {
+  if [[ -n "$SPINNER_PID" ]]; then
+    kill "$SPINNER_PID" 2>/dev/null || true
+    wait "$SPINNER_PID" 2>/dev/null || true
+    printf "\r\033[K" >&2
+    SPINNER_PID=""
+  fi
+}
+
+trap stop_spinner EXIT
+
+# ── API call ─────────────────────────────────────────────────────────────────
+
+check_deps
+start_spinner
+
+CURL_ARGS=(-s -w "\n%{http_code}" -H "Accept: application/json")
+if [[ -n "$API_KEY" ]]; then
+  CURL_ARGS+=(-H "Authorization: Bearer $API_KEY")
+fi
+
+ENCODED_URL=$(printf '%s' "$URL" | jq -sRr @uri)
+ENDPOINT="${API_URL}?url=${ENCODED_URL}"
+
+RAW=$(curl "${CURL_ARGS[@]}" "$ENDPOINT" 2>/dev/null) || {
+  stop_spinner
+  echo "Error: failed to connect to API at $API_URL" >&2
+  exit 2
+}
+
+HTTP_CODE=$(echo "$RAW" | tail -1)
+RESPONSE=$(echo "$RAW" | sed '$d')
+
+stop_spinner
+
+if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+  MSG=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null)
+  if [[ -n "$MSG" ]]; then
+    echo "Error: $MSG" >&2
+  else
+    echo "Error: API returned HTTP $HTTP_CODE" >&2
+  fi
+  exit 2
+fi
+
+# ── JSON output mode ─────────────────────────────────────────────────────────
+
+if [[ "$JSON_MODE" == true ]]; then
+  echo "$RESPONSE" | jq .
+  GRADE=$(echo "$RESPONSE" | jq -r '.score.grade')
+  [[ "$GRADE" == "A" || "$GRADE" == "B" ]] && exit 0 || exit 1
+fi
+
+# ── Extract data with jq ────────────────────────────────────────────────────
+
+ANALYZED_URL=$(jq_safe '.url')
+OVERALL=$(jq_safe '.score.overall')
+GRADE=$(jq_safe '.score.grade')
+TIMING=$(jq_safe '.timing')
+TOTAL_ISSUES=$(jq_safe '.score.totalIssues')
+
+# Category keys (API JSON keys) and display labels
+CAT_KEYS=(title description openGraph ogImage twitterCard canonical robots)
+CAT_LABELS=("Title" "Description" "Open Graph" "OG Image" "Twitter Card" "Canonical" "Robots")
+
+# Diagnostics keys map (category key -> diagnostics key)
+diag_key_for() {
+  case "$1" in
+    title)       echo "title" ;;
+    description) echo "description" ;;
+    openGraph)   echo "ogTags" ;;
+    ogImage)     echo "ogImage" ;;
+    twitterCard) echo "twitterCard" ;;
+    canonical)   echo "canonical" ;;
+    robots)      echo "robots" ;;
+  esac
+}
+
+# ── Terminal formatter ───────────────────────────────────────────────────────
+
+color_grade() {
+  case "$1" in
+    A|B) printf '%s%s%s' "$GREEN" "$1" "$RESET" ;;
+    C)   printf '%s%s%s' "$YELLOW" "$1" "$RESET" ;;
+    *)   printf '%s%s%s' "$RED" "$1" "$RESET" ;;
+  esac
+}
+
+color_score() {
+  local s=$1
+  if [[ "$s" -eq 100 ]]; then
+    printf '%s%s%s' "$GREEN" "$s" "$RESET"
+  elif [[ "$s" -ge 60 ]]; then
+    printf '%s%s%s' "$YELLOW" "$s" "$RESET"
+  else
+    printf '%s%s%s' "$RED" "$s" "$RESET"
+  fi
+}
+
+status_icon() {
+  case "$1" in
+    pass)    printf '%s✓%s' "$GREEN" "$RESET" ;;
+    warning) printf '%s⚠%s' "$YELLOW" "$RESET" ;;
+    fail)    printf '%s✗%s' "$RED" "$RESET" ;;
+  esac
+}
+
+format_terminal() {
+  # Header
+  printf '%sMetaPeek%s — %s%s%s\n' "$BOLD" "$RESET" "$CYAN" "$ANALYZED_URL" "$RESET"
+  echo ""
+
+  # Score line
+  printf '  Score: %s%s%s/100 (%s)\n' "$BOLD" "$OVERALL" "$RESET" "$(color_grade "$GRADE")"
+  echo ""
+
+  # Category rows
+  for i in "${!CAT_KEYS[@]}"; do
+    local key="${CAT_KEYS[$i]}"
+    local label="${CAT_LABELS[$i]}"
+    local dkey
+    dkey=$(diag_key_for "$key")
+
+    local score status message
+    score=$(jq_safe ".score.categories.${key}.score")
+    status=$(jq_safe ".score.categories.${key}.status")
+    message=$(jq_safe ".diagnostics.${dkey}.message")
+
+    local icon
+    icon=$(status_icon "$status")
+    local cscore
+    cscore=$(color_score "$score")
+
+    # Pad label to 14 chars
+    printf '  %s %-14s %s  %s%s%s\n' "$icon" "$label" "$cscore" "$DIM" "$message" "$RESET"
+  done
+
+  echo ""
+
+  # Issues count
+  if [[ "$TOTAL_ISSUES" -eq 0 ]]; then
+    printf '  %s%s issues found%s\n' "$GREEN" "$TOTAL_ISSUES" "$RESET"
+  else
+    local suffix="s"
+    [[ "$TOTAL_ISSUES" -eq 1 ]] && suffix=""
+    printf '  %s%s issue%s found%s\n' "$YELLOW" "$TOTAL_ISSUES" "$suffix" "$RESET"
+  fi
+  echo ""
+
+  # Issues detail + LLM block (only when issues exist)
+  if [[ "$TOTAL_ISSUES" -gt 0 ]]; then
+    printf '  %sIssues:%s\n' "$BOLD" "$RESET"
+    echo ""
+
+    for i in "${!CAT_KEYS[@]}"; do
+      local key="${CAT_KEYS[$i]}"
+      local label="${CAT_LABELS[$i]}"
+      local dkey
+      dkey=$(diag_key_for "$key")
+
+      local issue_count
+      issue_count=$(jq_safe ".score.categories.${key}.issues | length")
+      [[ "$issue_count" -eq 0 ]] && continue
+
+      local suggestion
+      suggestion=$(jq_safe ".diagnostics.${dkey}.suggestion // empty")
+
+      printf '  %s✗%s %s%s%s\n' "$RED" "$RESET" "$BOLD" "$label" "$RESET"
+
+      local j
+      for (( j=0; j<issue_count; j++ )); do
+        local issue
+        issue=$(jq_safe ".score.categories.${key}.issues[$j]")
+        printf '    %s•%s %s\n' "$DIM" "$RESET" "$issue"
+      done
+
+      if [[ -n "$suggestion" ]]; then
+        printf '    %s→%s %s\n' "$CYAN" "$RESET" "$suggestion"
+      fi
+      echo ""
+    done
+
+    # LLM copy block
+    build_llm_block
+    echo ""
+  fi
+
+  # Timing + exit hint
+  printf '  %sAnalyzed in %sms%s\n' "$DIM" "$TIMING" "$RESET"
+
+  if [[ "$GRADE" == "A" || "$GRADE" == "B" ]]; then
+    printf '  %s✓ Pass (exit 0) — grade %s%s\n' "$GREEN" "$GRADE" "$RESET"
+  else
+    printf '  %s✗ Fail (exit 1) — grade %s%s\n' "$RED" "$GRADE" "$RESET"
+  fi
+  echo ""
+}
+
+build_llm_block() {
+  local content_lines=()
+  content_lines+=("URL: $ANALYZED_URL")
+  content_lines+=("Score: $OVERALL/100 ($GRADE)")
+  content_lines+=("")
+  content_lines+=("Issues:")
+
+  for i in "${!CAT_KEYS[@]}"; do
+    local key="${CAT_KEYS[$i]}"
+    local dkey
+    dkey=$(diag_key_for "$key")
+
+    local issue_count
+    issue_count=$(jq_safe ".score.categories.${key}.issues | length")
+    [[ "$issue_count" -eq 0 ]] && continue
+
+    local suggestion
+    suggestion=$(jq_safe ".diagnostics.${dkey}.suggestion // empty")
+
+    local j
+    for (( j=0; j<issue_count; j++ )); do
+      local issue
+      issue=$(jq_safe ".score.categories.${key}.issues[$j]")
+      content_lines+=("- $issue")
+    done
+    if [[ -n "$suggestion" ]]; then
+      content_lines+=("  Fix: $suggestion")
+    fi
+  done
+
+  # Find max line length
+  local max_len=0
+  for line in "${content_lines[@]}"; do
+    local len=${#line}
+    (( len > max_len )) && max_len=$len
+  done
+
+  local inner_width=$(( max_len + 4 ))
+
+  local title=" Copy for LLM "
+  local title_len=${#title}
+  local top_bar_len=$(( inner_width - title_len - 1 ))
+  local top_bar=""
+  for (( k=0; k<top_bar_len; k++ )); do top_bar+="─"; done
+
+  printf '  ╭─%s%s╮\n' "$title" "$top_bar"
+  printf '  │%*s│\n' "$inner_width" ""
+
+  for line in "${content_lines[@]}"; do
+    printf '  │  %-*s  │\n' "$max_len" "$line"
+  done
+
+  printf '  │%*s│\n' "$inner_width" ""
+
+  local bot_bar=""
+  for (( k=0; k<inner_width; k++ )); do bot_bar+="─"; done
+  printf '  ╰%s╯\n' "$bot_bar"
+}
+
+# ── Markdown formatter ───────────────────────────────────────────────────────
+
+status_emoji() {
+  case "$1" in
+    pass)    echo "✅" ;;
+    warning) echo "⚠️" ;;
+    fail)    echo "❌" ;;
+  esac
+}
+
+format_markdown() {
+  printf '# MetaPeek — %s\n\n' "$ANALYZED_URL"
+  printf '**Score:** %s/100 (**%s**)\n\n' "$OVERALL" "$GRADE"
+
+  # Table
+  echo "| Status | Category | Score | Details |"
+  echo "|--------|----------|------:|---------|"
+
+  for i in "${!CAT_KEYS[@]}"; do
+    local key="${CAT_KEYS[$i]}"
+    local label="${CAT_LABELS[$i]}"
+    local dkey
+    dkey=$(diag_key_for "$key")
+
+    local score status message
+    score=$(jq_safe ".score.categories.${key}.score")
+    status=$(jq_safe ".score.categories.${key}.status")
+    message=$(jq_safe ".diagnostics.${dkey}.message")
+
+    local emoji
+    emoji=$(status_emoji "$status")
+    printf '| %s | %s | %s | %s |\n' "$emoji" "$label" "$score" "$message"
+  done
+
+  echo ""
+  printf '**Issues:** %s\n\n' "$TOTAL_ISSUES"
+
+  if [[ "$TOTAL_ISSUES" -gt 0 ]]; then
+    echo "## Issues"
+    echo ""
+
+    for i in "${!CAT_KEYS[@]}"; do
+      local key="${CAT_KEYS[$i]}"
+      local label="${CAT_LABELS[$i]}"
+      local dkey
+      dkey=$(diag_key_for "$key")
+
+      local issue_count
+      issue_count=$(jq_safe ".score.categories.${key}.issues | length")
+      [[ "$issue_count" -eq 0 ]] && continue
+
+      local suggestion
+      suggestion=$(jq_safe ".diagnostics.${dkey}.suggestion // empty")
+
+      printf '### ❌ %s\n\n' "$label"
+
+      local j
+      for (( j=0; j<issue_count; j++ )); do
+        local issue
+        issue=$(jq_safe ".score.categories.${key}.issues[$j]")
+        printf -- '- %s\n' "$issue"
+      done
+      if [[ -n "$suggestion" ]]; then
+        printf '  - **Fix:** %s\n' "$suggestion"
+      fi
+      echo ""
+    done
+
+    echo "## Copy for LLM"
+    echo ""
+    echo '```'
+    printf 'URL: %s\n' "$ANALYZED_URL"
+    printf 'Score: %s/100 (%s)\n' "$OVERALL" "$GRADE"
+    echo ""
+    echo "Issues:"
+    for i in "${!CAT_KEYS[@]}"; do
+      local key="${CAT_KEYS[$i]}"
+      local dkey
+      dkey=$(diag_key_for "$key")
+
+      local issue_count
+      issue_count=$(jq_safe ".score.categories.${key}.issues | length")
+      [[ "$issue_count" -eq 0 ]] && continue
+
+      local suggestion
+      suggestion=$(jq_safe ".diagnostics.${dkey}.suggestion // empty")
+
+      local j
+      for (( j=0; j<issue_count; j++ )); do
+        local issue
+        issue=$(jq_safe ".score.categories.${key}.issues[$j]")
+        printf -- '- %s\n' "$issue"
+      done
+      if [[ -n "$suggestion" ]]; then
+        printf '  Fix: %s\n' "$suggestion"
+      fi
+    done
+    echo '```'
+    echo ""
+  fi
+
+  printf '*Analyzed in %sms*\n\n' "$TIMING"
+
+  if [[ "$GRADE" == "A" || "$GRADE" == "B" ]]; then
+    printf '**Result:** Pass (exit 0) — grade %s\n\n' "$GRADE"
+  else
+    printf '**Result:** Fail (exit 1) — grade %s\n\n' "$GRADE"
+  fi
+}
+
+# ── Dispatch formatter ───────────────────────────────────────────────────────
+
+if [[ "$FORMAT" == "markdown" ]]; then
+  format_markdown
+else
+  format_terminal
+fi
+
+# ── Exit code ────────────────────────────────────────────────────────────────
+
+[[ "$GRADE" == "A" || "$GRADE" == "B" ]] && exit 0 || exit 1
