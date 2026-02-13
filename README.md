@@ -109,7 +109,7 @@ metapeek — https://r3.illinois.gov
   ✓ Pass (exit 0) — grade A
 ```
 
-**A site with issues:**
+**A site with warnings:**
 
 ```bash
 metapeek https://github.com
@@ -118,60 +118,54 @@ metapeek https://github.com
 ```
 metapeek — https://github.com
 
-  Score: 30/100 (F)
+  Score: 84/100 (B)
 
-  ✓ Title          100  Title tag present and optimal length
-  ✗ Description    0  Meta description missing
-  ✗ Open Graph     0  Missing: og:title, og:description, og:image
-  ✗ OG Image       0  og:image missing
-  ✓ Twitter Card   100  Twitter Card tags optional (will fall back to Open Graph)
-  ✗ Canonical      0  Canonical URL missing
+  ⚠ Title          60  Title exceeds 60 characters (61)
+  ⚠ Description    60  Description exceeds 160 characters (186)
+  ✓ Open Graph     100  All required Open Graph tags present
+  ✓ OG Image       100  og:image present with absolute URL
+  ✓ Twitter Card   100  Twitter Card configured
+  ⚠ Canonical      60  Trailing slash inconsistency with og:url
   ✓ Robots         100  No robots restrictions (page will be indexed)
 
-  4 issues found
+  3 issues found
 
   Issues:
 
+  ✗ Title
+    • Title exceeds 60 characters (61)
+    → Google may truncate titles longer than 60 characters in search results
+
   ✗ Description
-    • Meta description missing
-    → Add <meta name="description" content="...">
-
-  ✗ Open Graph
-    • Missing: og:title, og:description, og:image
-    → Add all three core Open Graph tags for social media sharing
-
-  ✗ OG Image
-    • og:image missing
-    → Add og:image — this is critical for social media previews
+    • Description exceeds 160 characters (186)
+    → Google may truncate descriptions longer than 160 characters
 
   ✗ Canonical
-    • Canonical URL missing
-    → Add <link rel="canonical" href="..."> to prevent duplicate content issues
+    • Trailing slash inconsistency with og:url
+    → Canonical lacks trailing slash but og:url has it...
 
   ╭─ Copy for LLM ──────────────────────────────────────────────────────────────────╮
   │                                                                                 │
   │  URL: https://github.com                                                       │
-  │  Score: 30/100 (F)                                                              │
+  │  Score: 84/100 (B)                                                              │
   │                                                                                 │
   │  Issues:                                                                        │
-  │  - Meta description missing                                                     │
-  │    Fix: Add <meta name="description" content="...">                             │
-  │  - Missing: og:title, og:description, og:image                                  │
-  │    Fix: Add all three core Open Graph tags for social media sharing              │
-  │  - og:image missing                                                             │
-  │    Fix: Add og:image — this is critical for social media previews               │
-  │  - Canonical URL missing                                                        │
-  │    Fix: Add <link rel="canonical" href="..."> to prevent duplicate content ...  │
+  │  - Title exceeds 60 characters (61)                                             │
+  │    Fix: Google may truncate titles longer than 60 characters in search results  │
+  │  - Description exceeds 160 characters (186)                                     │
+  │    Fix: Google may truncate descriptions longer than 160 characters             │
+  │  - Trailing slash inconsistency with og:url                                     │
+  │    Fix: Canonical lacks trailing slash but og:url has it...                     │
   │                                                                                 │
   ╰─────────────────────────────────────────────────────────────────────────────────╯
 
-  Analyzed in 97ms
-  ✗ Fail (exit 1) — grade F
+  Analyzed in 286ms
+  ✓ Pass (exit 0) — grade B
 ```
 
-When issues are found, the output includes:
+When issues or warnings are found, the output includes:
 
-- **Issues detail** — each failing category with its specific problems and a suggested fix
+- **Issues detail** — each warning or failing category with its specific problems and a suggested fix
 - **Copy for LLM** — a plain-text block you can copy-paste into ChatGPT, Claude, or any LLM to get help fixing the issues
 
 ## Usage
