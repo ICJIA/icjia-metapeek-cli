@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION="1.0.0"
-REPO_URL="https://github.com/ICJIA/metapeek-cli.git"
+REPO_URL="https://github.com/ICJIA/icjia-metapeek-cli.git"
 DEFAULT_API_URL="https://metapeek.icjia.app/api/analyze"
 UPDATE_CACHE_DIR="${HOME}/.cache/metapeek"
 UPDATE_CACHE_FILE="${UPDATE_CACHE_DIR}/latest_version"

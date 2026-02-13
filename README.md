@@ -22,8 +22,8 @@ metapeek requires a Unix shell (bash). It runs on:
 ### Option 1: Clone and run directly
 
 ```bash
-git clone https://github.com/ICJIA/metapeek-cli.git
-cd metapeek-cli
+git clone https://github.com/ICJIA/icjia-metapeek-cli.git
+cd icjia-metapeek-cli
 chmod +x metapeek
 ./metapeek https://github.com
 ```
@@ -31,14 +31,14 @@ chmod +x metapeek
 ### Option 2: Clone and add to your PATH
 
 ```bash
-git clone https://github.com/ICJIA/metapeek-cli.git
-ln -s "$(pwd)/metapeek-cli/metapeek" /usr/local/bin/metapeek
+git clone https://github.com/ICJIA/icjia-metapeek-cli.git
+ln -s "$(pwd)/icjia-metapeek-cli/metapeek" /usr/local/bin/metapeek
 ```
 
 ### Option 3: Direct download
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ICJIA/metapeek-cli/main/metapeek -o /usr/local/bin/metapeek && chmod +x /usr/local/bin/metapeek
+curl -fsSL https://raw.githubusercontent.com/ICJIA/icjia-metapeek-cli/main/metapeek -o /usr/local/bin/metapeek && chmod +x /usr/local/bin/metapeek
 ```
 
 ### Permissions
@@ -52,14 +52,14 @@ chmod +x metapeek
 If `ln -s` or downloading to `/usr/local/bin` fails with a permissions error, use `sudo`:
 
 ```bash
-sudo ln -s "$(pwd)/metapeek-cli/metapeek" /usr/local/bin/metapeek
+sudo ln -s "$(pwd)/icjia-metapeek-cli/metapeek" /usr/local/bin/metapeek
 ```
 
 Or install to your user-local bin directory instead (no `sudo` needed):
 
 ```bash
 mkdir -p ~/.local/bin
-ln -s "$(pwd)/metapeek-cli/metapeek" ~/.local/bin/metapeek
+ln -s "$(pwd)/icjia-metapeek-cli/metapeek" ~/.local/bin/metapeek
 ```
 
 Make sure `~/.local/bin` is in your `PATH`. Add this to your `~/.zshrc` or `~/.bashrc` if it isn't:
