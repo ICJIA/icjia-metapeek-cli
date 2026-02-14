@@ -135,6 +135,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)    usage; exit 0 ;;
     -V|--version) echo "metapeek $VERSION"; exit 0 ;;
+    --tests)      exec "${BASH_SOURCE%/*}/test/run.sh" ;;
     --json)       JSON_MODE=true; shift ;;
     --format)
       [[ $# -lt 2 ]] && { echo "Error: --format requires an argument" >&2; exit 2; }
