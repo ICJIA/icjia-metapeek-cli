@@ -1,5 +1,7 @@
 # metapeek-cli
 
+![metapeek help output](metapeek-help.png)
+
 CLI tool for analyzing meta tags and social sharing readiness.
 
 This is the command-line interface for [metapeek](https://metapeek.icjia.app) — the web-based meta tag analyzer. Use this CLI for CI/CD pipelines, scripts, or quick terminal analysis.
