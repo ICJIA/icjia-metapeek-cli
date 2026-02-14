@@ -1,10 +1,11 @@
-# metapeek
+# metapeek-cli
 
 CLI tool for analyzing meta tags and social sharing readiness.
 
 This is the command-line interface for [metapeek](https://metapeek.icjia.app) â€” the web-based meta tag analyzer. Use this CLI for CI/CD pipelines, scripts, or quick terminal analysis.
 
 **Web app:** https://metapeek.icjia.app
+
 **Web app source:** https://github.com/ICJIA/icjia-metapeek
 
 ## Platform Support
@@ -12,7 +13,9 @@ This is the command-line interface for [metapeek](https://metapeek.icjia.app) â€
 metapeek requires a Unix shell (bash). It runs on:
 
 - **macOS**
+
 - **Linux**
+
 - **Windows via WSL2**
 
 > **Windows note:** metapeek does not run in PowerShell or Command Prompt. You must use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with a Linux distribution (e.g. Ubuntu) to run on a Windows machine.
@@ -180,6 +183,7 @@ Options:
 
   --no-color          Disable colored output
   --no-spinner        Disable loading spinner
+  --tests             Run the test suite
   -V, --version       Show version
   -h, --help          Show help
 ```
