@@ -149,7 +149,7 @@ metapeek — https://github.com
 
   ╭─ Copy for LLM ──────────────────────────────────────────────────────────────────╮
   │                                                                                 │
-  │  URL: https://github.com                                                       │
+  │  URL: https://github.com                                                        │
   │  Score: 84/100 (B)                                                              │
   │                                                                                 │
   │  Issues:                                                                        │
