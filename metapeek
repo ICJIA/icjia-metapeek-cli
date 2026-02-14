@@ -485,15 +485,18 @@ wrap_line() {
   done
 }
 
-# Max content width: 120 total box width - 8 chars of box chrome (  │  ...  │)
-LLM_MAX_CONTENT=112
-
 build_llm_block() {
-  local raw_lines=()
-  raw_lines+=("URL: $ANALYZED_URL")
-  raw_lines+=("Score: $OVERALL/100 ($GRADE)")
-  raw_lines+=("")
-  raw_lines+=("Issues:")
+  local separator="─────────────────────────────────────────────────────────"
+
+  echo ""
+  echo "$separator"
+  echo "Copy for LLM"
+  echo "$separator"
+  echo ""
+  echo "URL: $ANALYZED_URL"
+  echo "Score: $OVERALL/100 ($GRADE)"
+  echo ""
+  echo "Issues:"
 
   for i in "${!CAT_KEYS[@]}"; do
     local key="${CAT_KEYS[$i]}"
@@ -511,59 +514,14 @@ build_llm_block() {
     for (( j=0; j<issue_count; j++ )); do
       local issue
       issue=$(jq_safe ".score.categories.${key}.issues[$j]")
-      raw_lines+=("- $issue")
+      echo "- $issue"
     done
     if [[ -n "$suggestion" ]]; then
-      raw_lines+=("  Fix: $suggestion")
+      echo "  Fix: $suggestion"
     fi
   done
 
-  # Word-wrap into final content lines
-  local content_lines=()
-  for raw in "${raw_lines[@]}"; do
-    if [[ -z "$raw" ]]; then
-      content_lines+=("")
-      continue
-    fi
-    # Detect leading indent for continuation lines
-    local indent=""
-    if [[ "$raw" == "- "* ]]; then
-      indent="  "
-    elif [[ "$raw" == "  Fix: "* ]]; then
-      indent="  "
-    fi
-    while IFS= read -r wrapped; do
-      content_lines+=("$wrapped")
-    done < <(wrap_line "$raw" "$LLM_MAX_CONTENT" "$indent")
-  done
-
-  # Find max line length (capped by wrapping, but needed for padding)
-  local max_len=0
-  for line in "${content_lines[@]}"; do
-    local len=${#line}
-    (( len > max_len )) && max_len=$len
-  done
-
-  local inner_width=$(( max_len + 4 ))
-
-  local title=" Copy for LLM "
-  local title_len=${#title}
-  local top_bar_len=$(( inner_width - title_len - 1 ))
-  local top_bar=""
-  for (( k=0; k<top_bar_len; k++ )); do top_bar+="─"; done
-
-  printf '  ╭─%s%s╮\n' "$title" "$top_bar"
-  printf '  │%*s│\n' "$inner_width" ""
-
-  for line in "${content_lines[@]}"; do
-    printf '  │  %-*s  │\n' "$max_len" "$line"
-  done
-
-  printf '  │%*s│\n' "$inner_width" ""
-
-  local bot_bar=""
-  for (( k=0; k<inner_width; k++ )); do bot_bar+="─"; done
-  printf '  ╰%s╯\n' "$bot_bar"
+  echo ""
 }
 
 # ── Markdown formatter ───────────────────────────────────────────────────────
