@@ -116,6 +116,7 @@ usage() {
 
     --no-color          Disable colored output
     --no-spinner        Disable loading spinner
+    --tests             Run test suite
     -V, --version       Show version
     -h, --help          Show help
 USAGE

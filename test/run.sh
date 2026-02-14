@@ -106,6 +106,7 @@ assert_stdout_contains "--help shows --api-url option" "\-\-api-url" "$METAPEEK"
 
 assert_stdout_contains "--help shows --no-color option" "\-\-no-color" "$METAPEEK" --help
 assert_stdout_contains "--help shows --no-spinner option" "\-\-no-spinner" "$METAPEEK" --help
+assert_stdout_contains "--help shows --tests option" "\-\-tests" "$METAPEEK" --help
 
 assert_stdout_contains "--version prints version" "metapeek" "$METAPEEK" --version
 assert_stdout_contains "--version includes semver" "[0-9]\+\.[0-9]\+\.[0-9]\+" "$METAPEEK" --version
