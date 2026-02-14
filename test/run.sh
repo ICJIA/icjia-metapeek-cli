@@ -110,6 +110,9 @@ assert_stdout_contains "--help shows --no-spinner option" "\-\-no-spinner" "$MET
 assert_stdout_contains "--version prints version" "metapeek" "$METAPEEK" --version
 assert_stdout_contains "--version includes semver" "[0-9]\+\.[0-9]\+\.[0-9]\+" "$METAPEEK" --version
 
+assert_exit "--tests exits with test suite code" 0 "$METAPEEK" --tests
+assert_stdout_contains "--tests shows test output" "metapeek test suite" "$METAPEEK" --tests
+
 echo ""
 
 # ── 2. Error handling ───────────────────────────────────────────────────────
