@@ -136,7 +136,18 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)    usage; exit 0 ;;
     -V|--version) echo "metapeek $VERSION"; exit 0 ;;
-    --tests)      exec "${BASH_SOURCE%/*}/test/run.sh" ;;
+    --tests)
+      # Try installed location first, then project directory
+      if [[ -x "${BASH_SOURCE%/*}/test/run.sh" ]]; then
+        exec "${BASH_SOURCE%/*}/test/run.sh"
+      elif [[ -x "./test/run.sh" ]]; then
+        exec "./test/run.sh"
+      else
+        echo "Error: test suite not found" >&2
+        echo "Run from the metapeek project directory or install test/ alongside metapeek" >&2
+        exit 2
+      fi
+      ;;
     --json)       JSON_MODE=true; shift ;;
     --format)
       [[ $# -lt 2 ]] && { echo "Error: --format requires an argument" >&2; exit 2; }
