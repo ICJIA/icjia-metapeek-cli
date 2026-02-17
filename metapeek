@@ -54,7 +54,7 @@ refresh_update_cache() {
 
 check_for_update() {
   # Skip in non-interactive / JSON / piped contexts
-  if [[ ! -t 2 ]] || [[ "$JSON_MODE" == true ]]; then
+  if [[ ! -t 2 ]] || [[ "$JSON_MODE" == true ]] || [[ "$NO_COLOR" == true ]]; then
     return
   fi
 
@@ -175,6 +175,11 @@ if [[ -z "$URL" ]]; then
   exit 2
 fi
 
+if [[ "$FORMAT" != "terminal" && "$FORMAT" != "markdown" ]]; then
+  echo "Error: unknown format \"$FORMAT\" (expected: terminal or markdown)" >&2
+  exit 2
+fi
+
 # ── URL normalization & validation ───────────────────────────────────────────
 
 # Reject non-http(s) protocols
@@ -252,7 +257,7 @@ trap stop_spinner EXIT
 analyze_url() {
   local url="$1"
   python3 - "$url" "$VERSION" <<'PYEOF'
-import sys, json, time, re
+import sys, json, time
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from html.parser import HTMLParser
@@ -283,10 +288,12 @@ class MetaParser(HTMLParser):
             name = a.get("name", "") or a.get("property", "")
             if name:
                 self.meta[name.lower()] = content
-        elif tag == "link" and a.get("rel", "").lower() == "canonical":
+        elif tag == "link" and "canonical" in a.get("rel", "").lower().split():
             self.link_canonical = a.get("href", "")
 
     def handle_data(self, data):
+        if self.done:
+            return
         if self.in_title:
             self.title += data
 
@@ -298,7 +305,8 @@ class MetaParser(HTMLParser):
 
 def fetch(url):
     req = Request(url, headers={
-        "User-Agent": f"metapeek/{version} (CLI; +https://github.com/ICJIA/icjia-metapeek-cli)"
+        "User-Agent": f"metapeek/{version} (CLI; +https://github.com/ICJIA/icjia-metapeek-cli)",
+        "Accept-Encoding": "identity"
     })
     resp = urlopen(req, timeout=10)
     return resp.read(MAX_BYTES).decode("utf-8", errors="replace")
@@ -452,7 +460,17 @@ except HTTPError as e:
     json.dump({"ok": False, "message": f"HTTP {e.code}: {e.reason}"}, sys.stdout, separators=(",", ":"))
 except URLError as e:
     reason = str(e.reason) if hasattr(e, "reason") else str(e)
-    json.dump({"ok": False, "message": reason}, sys.stdout, separators=(",", ":"))
+    if "Name or service not known" in reason or "nodename nor servname" in reason:
+        msg = "Could not resolve hostname. Check that the domain exists and is spelled correctly."
+    elif "Connection refused" in reason:
+        msg = "Connection refused by target server. The site may be down or blocking requests."
+    elif "timed out" in reason:
+        msg = "Request timed out after 10 seconds. The target site did not respond in time."
+    elif "CERTIFICATE_VERIFY_FAILED" in reason or "SSL" in reason:
+        msg = "SSL certificate verification failed. The site may have an invalid or expired certificate."
+    else:
+        msg = f"Failed to fetch URL: {reason}"
+    json.dump({"ok": False, "message": msg}, sys.stdout, separators=(",", ":"))
 except Exception as e:
     json.dump({"ok": False, "message": str(e)}, sys.stdout, separators=(",", ":"))
 PYEOF
@@ -634,56 +652,6 @@ format_terminal() {
     printf '  %s✗ Fail (exit 1) — grade %s%s\n' "$RED" "$GRADE" "$RESET"
   fi
   echo ""
-}
-
-# Word-wrap a line at a max width, preserving leading indent on continuation lines.
-# Usage: wrap_line "text" max_width indent
-# Outputs one or more lines to stdout.
-wrap_line() {
-  local text="$1" max_width="$2" indent="$3"
-  if [[ ${#text} -le $max_width ]]; then
-    echo "$text"
-    return
-  fi
-  local pos=0 remaining="$text"
-  local first=true
-  while [[ ${#remaining} -gt 0 ]]; do
-    local width=$max_width
-    if [[ "$first" != true ]]; then
-      width=$(( max_width - ${#indent} ))
-    fi
-    if [[ ${#remaining} -le $width ]]; then
-      if [[ "$first" == true ]]; then
-        echo "$remaining"
-      else
-        echo "${indent}${remaining}"
-      fi
-      break
-    fi
-    # Find last space within width
-    local chunk="${remaining:0:$width}"
-    local break_at=-1
-    local i
-    for (( i=${#chunk}-1; i>=0; i-- )); do
-      if [[ "${chunk:$i:1}" == " " ]]; then
-        break_at=$i
-        break
-      fi
-    done
-    if [[ $break_at -le 0 ]]; then
-      # No space found — hard break
-      break_at=$width
-    fi
-    if [[ "$first" == true ]]; then
-      echo "${remaining:0:$break_at}"
-      first=false
-    else
-      echo "${indent}${remaining:0:$break_at}"
-    fi
-    remaining="${remaining:$break_at}"
-    # Strip leading space from next segment
-    remaining="${remaining# }"
-  done
 }
 
 build_llm_block() {

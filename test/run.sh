@@ -130,6 +130,8 @@ assert_exit "extra positional arg exits 2" 2 "$METAPEEK" "https://a.com" "https:
 assert_stderr_contains "extra arg shows error" "unexpected argument" "$METAPEEK" "https://a.com" "https://b.com"
 
 assert_exit "--format without value exits 2" 2 "$METAPEEK" --format
+assert_exit "--format with invalid value exits 2" 2 "$METAPEEK" --format csv "https://example.com"
+assert_stderr_contains "--format invalid shows error" "unknown format" "$METAPEEK" --format csv "https://example.com"
 
 echo ""
 
@@ -362,10 +364,11 @@ echo "  Security"
 echo "  ────────"
 
 # URL with shell metacharacters should not cause injection
-assert_exit 'URL with shell metacharacters exits safely' 2 "$METAPEEK" --no-spinner 'https://evil.com/$(whoami)'
-assert_exit 'URL with backticks exits safely' 2 "$METAPEEK" --no-spinner 'https://evil.com/`id`'
-assert_exit 'URL with semicolons exits safely' 2 "$METAPEEK" --no-spinner 'https://evil.com/;rm -rf /'
-assert_exit 'URL with pipe exits safely' 2 "$METAPEEK" --no-spinner 'https://evil.com/|cat /etc/passwd'
+# Uses .test TLD (RFC 6761) which will never resolve, guaranteeing exit 2
+assert_exit 'URL with shell metacharacters exits safely' 2 "$METAPEEK" --no-spinner 'https://no-resolve.test/$(whoami)'
+assert_exit 'URL with backticks exits safely' 2 "$METAPEEK" --no-spinner 'https://no-resolve.test/`id`'
+assert_exit 'URL with semicolons exits safely' 2 "$METAPEEK" --no-spinner 'https://no-resolve.test/;rm -rf /'
+assert_exit 'URL with pipe exits safely' 2 "$METAPEEK" --no-spinner 'https://no-resolve.test/|cat /etc/passwd'
 
 # Sanitize function strips control characters
 sanitize_output=$(printf 'hello\033[31mworld\033[0m\x07bell' | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177')

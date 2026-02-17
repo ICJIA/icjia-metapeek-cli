@@ -271,10 +271,10 @@ metapeek includes a comprehensive test suite covering all features and edge case
 
 ### Test Coverage
 
-The test suite includes **54 tests** across 8 categories:
+The test suite includes **56 tests** across 8 categories:
 
 - **Flags & argument parsing** (13 tests) — validates all CLI options, version output, help text
-- **Error handling** (10 tests) — invalid URLs, missing arguments, unknown options
+- **Error handling** (12 tests) — invalid URLs, missing arguments, unknown options, invalid format values
 - **URL normalization** (5 tests) — protocol prepending, validation of http/https/ftp/mailto/file schemes
 - **Live analysis — terminal output** (10 tests) — score display, category rows, issues section, LLM copy block, exit hints
 - **Live analysis — JSON output** (3 tests) — valid JSON structure, expected fields, no ANSI code leakage
@@ -299,7 +299,7 @@ Passing tests show a green checkmark (✓), failed tests show details:
   ...
 
   ═══════════════════
-  54 passed (54 total)
+  56 passed (56 total)
 ```
 
 ## License
