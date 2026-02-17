@@ -10,6 +10,103 @@ This is the command-line interface for [metapeek](https://metapeek.icjia.app) �
 
 ![metapeek help output](metapeek-help.png)
 
+## CLI vs. Web App
+
+The CLI and the web app perform the same core analysis — scoring meta tags across 7 categories with the same weights and grading scale — but they differ in architecture, dependencies, and use cases.
+
+### How They Work
+
+| | **CLI (`metapeek`)** | **Web App (metapeek.icjia.app)** |
+|---|---|---|
+| **Language** | Bash + embedded Python | TypeScript (Nuxt/Nitro on Netlify) |
+| **HTML fetching** | Python `urllib.request` (stdlib) | Node `fetch` via Nitro server route with redirect chain tracking |
+| **HTML parsing** | Python `html.parser.HTMLParser` (stdlib) | [cheerio](https://cheerio.js.org/) (jQuery-like DOM API) |
+| **Infrastructure** | Runs on your machine | Netlify Functions (serverless) |
+| **API endpoints** | None — all logic runs locally | `POST /api/fetch` (proxy) and `GET /api/analyze?url=` (full analysis) |
+| **Rate limiting** | None — it's your machine | 10 requests per 60 seconds per IP (Netlify edge) |
+| **SSRF protection** | Protocol validation only | DNS resolution checks, private IP blocking, CORS, optional API key |
+| **Dependencies** | `python3` (stdlib only) + `jq` | ~20 npm packages (Nuxt, Vue, cheerio, etc.) |
+
+### What the CLI Parses
+
+The CLI extracts 7 categories from the `<head>` section: title, meta description, Open Graph (og:title, og:description, og:image), OG image URL format, Twitter Card, canonical URL, and robots directives.
+
+### What the Web App Parses
+
+The web app extracts everything the CLI does plus: viewport, theme-color, author, keywords, language, generator, favicon, full OG metadata (locale, site_name, type, video, audio, image dimensions), Facebook app/admin IDs, article metadata (author, published/modified time, section, tags), full Twitter Card metadata (site, creator, labels/data), Pinterest tags, Apple/iOS tags, Microsoft tile tags, and JSON-LD structured data.
+
+### Pros and Cons
+
+**CLI**
+
+| Pros | Cons |
+|---|---|
+| Zero infrastructure — runs anywhere with Python 3 and jq | Terminal-only output (no visual previews) |
+| No network dependency beyond the target URL itself | Parses fewer meta tags than the web app |
+| Machine-readable output (JSON, exit codes) for scripting | No image dimension analysis |
+| Works in CI/CD pipelines, pre-commit hooks, and cron jobs | No social preview cards (Facebook, Twitter, LinkedIn) |
+| No rate limits — analyze as many URLs as you want | No browser-based OG image rendering |
+| Offline-capable for testing local dev servers | Requires a Unix shell (bash) |
+| Single file — no install step, no package manager |  |
+
+**Web App**
+
+| Pros | Cons |
+|---|---|
+| Visual social preview cards (Facebook, Twitter, LinkedIn) | Requires internet access to the Netlify-hosted service |
+| Richer metadata extraction (structured data, favicons, Apple/MS tags) | Rate limited to 10 requests per minute |
+| OG image dimension analysis and validation | Cannot be used in CI/CD or automated pipelines |
+| Interactive UI with color-coded diagnostics | No machine-readable output for scripting |
+| No local dependencies — just a browser | Depends on Netlify infrastructure being available |
+| Social card previews show exactly what users will see when sharing | Cannot analyze `localhost` or private network URLs |
+
+### Why Use the CLI?
+
+Use the CLI when you need **automation, repeatability, or integration** with development workflows. The web app is better for **visual inspection and one-off checks**.
+
+#### User Stories
+
+- **As a developer**, I want to check meta tags before every deploy so that broken social previews never reach production.
+
+  ```bash
+  # CI/CD pipeline gate — fails the build on grade C or below
+  metapeek https://staging.example.com || exit 1
+  ```
+
+- **As a DevOps engineer**, I want to monitor meta tags across all our sites on a schedule so that regressions are caught automatically.
+
+  ```bash
+  # Cron job scanning multiple sites
+  for url in https://site-a.example.com https://site-b.example.com; do
+    metapeek "$url" --json >> /var/log/metapeek.jsonl
+  done
+  ```
+
+- **As a content author**, I want a quick terminal check after editing page metadata so that I know the changes look right without leaving my editor.
+
+  ```bash
+  metapeek https://dev.example.com/my-new-post
+  ```
+
+- **As a QA tester**, I want to verify that meta tags meet our standards as part of our test suite so that SEO requirements are enforced.
+
+  ```bash
+  # In a test script — exit code 1 means grade C/D/F
+  metapeek https://staging.example.com --json | jq -e '.score.grade == "A"'
+  ```
+
+- **As a developer working offline or behind a VPN**, I want to analyze meta tags on my local dev server so that I can iterate without deploying.
+
+  ```bash
+  metapeek http://localhost:3000
+  ```
+
+- **As a team lead**, I want to pipe analysis results into our reporting tools so that meta tag quality is tracked over time.
+
+  ```bash
+  metapeek https://example.com --json | jq '{url: .url, score: .score.overall, grade: .score.grade}'
+  ```
+
 ## Platform Support
 
 metapeek requires a Unix shell (bash). It runs on:
