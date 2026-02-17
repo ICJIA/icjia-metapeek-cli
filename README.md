@@ -4,7 +4,7 @@
 
 CLI tool for analyzing meta tags and social sharing readiness.
 
-This is the command-line interface for [metapeek](https://metapeek.icjia.app) — the web-based meta tag analyzer. Use this CLI for CI/CD pipelines, scripts, or quick terminal analysis.
+This is the command-line interface for [metapeek](https://metapeek.icjia.app) — the web-based meta tag analyzer. The CLI is fully self-contained and analyzes pages directly — no external API required. Use it for CI/CD pipelines, scripts, or quick terminal analysis.
 
 **Web app:** https://metapeek.icjia.app
 
@@ -75,14 +75,14 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Requirements
 
-`curl` and `jq` must be installed. The script checks at startup and prints install instructions if either is missing.
+`python3` and `jq` must be installed. The script checks at startup and prints install instructions if either is missing.
 
 ```bash
-# macOS
-brew install curl jq
+# macOS (jq only — python3 is pre-installed)
+brew install jq
 
 # Ubuntu / WSL2
-sudo apt install curl jq
+sudo apt install python3 jq
 ```
 
 ## Quickstart
@@ -181,7 +181,6 @@ metapeek <url> [options]
 Options:
   --json              Output raw JSON
   --format <type>     Output format: terminal (default) or markdown
-  --api-url <url>     Override API endpoint
 
   --no-color          Disable colored output
   --no-spinner        Disable loading spinner
@@ -218,18 +217,18 @@ Every run prints its exit status at the end of the output (e.g. `✓ Pass (exit 
 | ---- | ------------------------------------------------------------- |
 | 0    | Grade A or B                                                  |
 | 1    | Grade C, D, or F                                              |
-| 2    | Error (invalid URL, missing deps, network failure, API error) |
+| 2    | Error (invalid URL, missing deps, network failure)            |
 
 ## Security
 
 metapeek is hardened against common attack vectors:
 
-- **ANSI injection prevention** — All API responses (both success and error messages) are sanitized to strip control characters before display, preventing malicious terminal escape sequences
+- **ANSI injection prevention** — All analyzer output (both success and error messages) is sanitized to strip control characters before display, preventing malicious terminal escape sequences
 - **Shell injection prevention** — URLs are properly quoted and encoded, preventing command injection via shell metacharacters
 - **Protocol validation** — Only `http://` and `https://` URLs are accepted; `javascript:`, `data:`, `file://`, `ftp://`, and other schemes are rejected
 - **Strict error handling** — The script runs with `set -euo pipefail` to catch errors early and prevent undefined behavior
 
-All security measures are validated by 8 dedicated security tests in the test suite.
+All security measures are validated by 9 dedicated security tests in the test suite.
 
 ## Testing
 
@@ -238,7 +237,7 @@ metapeek includes a comprehensive test suite covering all features and edge case
 ### Run Tests
 
 ```bash
-# Run all tests (includes live API calls)
+# Run all tests (includes live analysis)
 ./test/run.sh
 
 # Run only offline tests (skip network-dependent tests)
@@ -247,18 +246,18 @@ metapeek includes a comprehensive test suite covering all features and edge case
 
 ### Test Coverage
 
-The test suite includes **56 tests** across 7 categories:
+The test suite includes **54 tests** across 8 categories:
 
 - **Flags & argument parsing** (13 tests) — validates all CLI options, version output, help text
-- **Error handling** (13 tests) — invalid URLs, missing arguments, unknown options, unreachable APIs
+- **Error handling** (10 tests) — invalid URLs, missing arguments, unknown options
 - **URL normalization** (5 tests) — protocol prepending, validation of http/https/ftp/mailto/file schemes
-- **Live API — terminal output** (10 tests) — score display, category rows, issues section, LLM copy block, exit hints
-- **Live API — JSON output** (3 tests) — valid JSON structure, expected fields, no ANSI code leakage
-- **Live API — markdown output** (3 tests) — heading format, table structure, result line
+- **Live analysis — terminal output** (10 tests) — score display, category rows, issues section, LLM copy block, exit hints
+- **Live analysis — JSON output** (3 tests) — valid JSON structure, expected fields, no ANSI code leakage
+- **Live analysis — markdown output** (3 tests) — heading format, table structure, result line
 - **No-color output** (1 test) — ANSI escape sequence stripping
-- **Security** (8 tests) — shell injection prevention, control character sanitization, protocol restrictions
+- **Security** (9 tests) — shell injection prevention, control character sanitization, protocol restrictions
 
-Tests use real API calls to `https://r3.illinois.gov` (grade A, no issues) and `https://github.com` (grade B, warnings for title/description length and trailing slash inconsistency) to verify output formatting.
+Tests analyze `https://r3.illinois.gov` (grade A, no issues) and `https://github.com` (grade B, warnings for title/description length and trailing slash inconsistency) to verify output formatting.
 
 ### Test Output
 
@@ -275,7 +274,7 @@ Passing tests show a green checkmark (✓), failed tests show details:
   ...
 
   ═══════════════════
-  56 passed (56 total)
+  54 passed (54 total)
 ```
 
 ## License
