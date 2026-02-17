@@ -1,7 +1,5 @@
 # metapeek-cli
 
-![metapeek help output](metapeek-help.png)
-
 CLI tool for analyzing meta tags and social sharing readiness.
 
 This is the command-line interface for [metapeek](https://metapeek.icjia.app) — the web-based meta tag analyzer. The CLI is fully self-contained and analyzes pages directly — no external API required. Use it for CI/CD pipelines, scripts, or quick terminal analysis.
@@ -75,15 +73,18 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Requirements
 
-`python3` and `jq` must be installed. The script checks at startup and prints install instructions if either is missing.
+`python3` (3.6+) and `jq` must be installed. The script checks at startup and prints install instructions if either is missing.
 
 ```bash
-# macOS (jq only — python3 is pre-installed)
+# macOS — python3 is included with Xcode Command Line Tools
+xcode-select --install   # if python3 is not already available
 brew install jq
 
 # Ubuntu / WSL2
 sudo apt install python3 jq
 ```
+
+> **Note:** On most macOS systems, `python3` is already available. Run `python3 --version` to check. If it prompts you to install developer tools, follow the prompt or run `xcode-select --install`.
 
 ## Quickstart
 
@@ -183,10 +184,9 @@ metapeek <url> [options]
 Options:
   --json              Output raw JSON
   --format <type>     Output format: terminal (default) or markdown
-
   --no-color          Disable colored output
   --no-spinner        Disable loading spinner
-  --tests             Run the test suite
+  --tests             Run test suite
   -V, --version       Show version
   -h, --help          Show help
 ```

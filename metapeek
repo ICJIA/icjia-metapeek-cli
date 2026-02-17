@@ -17,8 +17,12 @@ check_deps() {
     echo "Error: missing required dependencies: ${missing[*]}" >&2
     echo "" >&2
     echo "Install them:" >&2
-    echo "  macOS:       brew install ${missing[*]}" >&2
-    echo "  Ubuntu/WSL2: sudo apt install ${missing[*]}" >&2
+    if [[ "$(uname)" == "Darwin" ]]; then
+      echo "  macOS:  xcode-select --install   # provides python3" >&2
+      echo "          brew install jq" >&2
+    else
+      echo "  Ubuntu/WSL2: sudo apt install ${missing[*]}" >&2
+    fi
     exit 2
   fi
 }
