@@ -171,24 +171,24 @@ metapeek — https://github.com
 
   ✗ Canonical
     • Trailing slash inconsistency with og:url
-    → Canonical lacks trailing slash but og:url has it. Choose one format
-      and use it consistently across canonical, og:url, and all meta tags.
+    → Canonical lacks trailing slash but og:url has it. Choose one format and use it consistently across canonical, og:url, and all meta tags.
 
-  ─────────────────────────────────────────────────────────
-  Copy for LLM
-  ─────────────────────────────────────────────────────────
 
-  URL: https://github.com
-  Score: 84/100 (B)
+─────────────────────────────────────────────────────────
+Copy for LLM
+─────────────────────────────────────────────────────────
 
-  Issues:
-  - Title exceeds 60 characters (61)
-    Fix: Keep the title under 60 characters for best display in search results.
-  - Description exceeds 160 characters (186)
-    Fix: Keep the meta description under 160 characters for best display in search results.
-  - Trailing slash inconsistency with og:url
-    Fix: Canonical lacks trailing slash but og:url has it. Choose one format
-    and use it consistently across canonical, og:url, and all meta tags.
+URL: https://github.com
+Score: 84/100 (B)
+
+Issues:
+- Title exceeds 60 characters (61)
+  Fix: Keep the title under 60 characters for best display in search results.
+- Description exceeds 160 characters (186)
+  Fix: Keep the meta description under 160 characters for best display in search results.
+- Trailing slash inconsistency with og:url
+  Fix: Canonical lacks trailing slash but og:url has it. Choose one format and use it consistently across canonical, og:url, and all meta tags.
+
 
   Analyzed in 268ms
   ✓ Pass (exit 0) — grade B
