@@ -102,8 +102,6 @@ assert_stdout_contains "--help shows usage" "Usage:" "$METAPEEK" --help
 assert_stdout_contains "--help shows banner" "metapeek" "$METAPEEK" --help
 assert_stdout_contains "--help shows --json option" "\-\-json" "$METAPEEK" --help
 assert_stdout_contains "--help shows --format option" "\-\-format" "$METAPEEK" --help
-assert_stdout_contains "--help shows --api-url option" "\-\-api-url" "$METAPEEK" --help
-
 assert_stdout_contains "--help shows --no-color option" "\-\-no-color" "$METAPEEK" --help
 assert_stdout_contains "--help shows --no-spinner option" "\-\-no-spinner" "$METAPEEK" --help
 assert_stdout_contains "--help shows --tests option" "\-\-tests" "$METAPEEK" --help
@@ -132,10 +130,6 @@ assert_exit "extra positional arg exits 2" 2 "$METAPEEK" "https://a.com" "https:
 assert_stderr_contains "extra arg shows error" "unexpected argument" "$METAPEEK" "https://a.com" "https://b.com"
 
 assert_exit "--format without value exits 2" 2 "$METAPEEK" --format
-assert_exit "--api-url without value exits 2" 2 "$METAPEEK" --api-url
-
-
-assert_exit "bad API URL exits 2" 2 "$METAPEEK" --no-spinner --api-url "http://localhost:1" "https://github.com"
 
 echo ""
 
