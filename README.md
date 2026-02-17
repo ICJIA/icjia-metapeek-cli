@@ -75,18 +75,39 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Requirements
 
-`python3` (3.6+) and `jq` must be installed. The script checks at startup and prints install instructions if either is missing.
+metapeek requires two dependencies:
+
+| Dependency | Version | Purpose |
+| ---------- | ------- | ------- |
+| `python3` | 3.6+ | Runs the built-in meta tag analyzer (stdlib only — no pip packages needed) |
+| `jq` | any | Parses JSON output from the analyzer for terminal formatting |
+
+If either dependency is missing, metapeek will exit with a clear error message and platform-specific install instructions so you know exactly what to run before trying again:
+
+```
+Error: missing required dependencies: python3 jq
+
+Install them:
+  macOS:  xcode-select --install   # provides python3
+          brew install jq
+```
+
+### Installing dependencies
+
+**macOS:**
 
 ```bash
-# macOS — python3 is included with Xcode Command Line Tools
-xcode-select --install   # if python3 is not already available
+xcode-select --install   # provides python3 (already available on most Macs)
 brew install jq
+```
 
-# Ubuntu / WSL2
+**Ubuntu / WSL2:**
+
+```bash
 sudo apt install python3 jq
 ```
 
-> **Note:** On most macOS systems, `python3` is already available. Run `python3 --version` to check. If it prompts you to install developer tools, follow the prompt or run `xcode-select --install`.
+> **Tip:** Run `python3 --version` and `jq --version` to check if they're already installed. On macOS, if `python3` prompts you to install developer tools, follow the prompt or run `xcode-select --install`.
 
 ## Quickstart
 
