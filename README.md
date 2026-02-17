@@ -100,17 +100,17 @@ metapeek — https://r3.illinois.gov
 
   Score: 100/100 (A)
 
-  ✓ Title          100  Title tag present and optimal length
-  ✓ Description    100  Meta description present and optimal length
-  ✓ Open Graph     100  All required Open Graph tags present
-  ✓ OG Image       100  og:image present with absolute URL
-  ✓ Twitter Card   100  Twitter Card configured
-  ✓ Canonical      100  Canonical URL present
-  ✓ Robots         100  Robots meta tag present
+  ✓ Title          100  Title is 28 characters
+  ✓ Description    100  Description is 135 characters
+  ✓ Open Graph     100  All required OG tags present
+  ✓ OG Image       100  og:image is present and absolute
+  ✓ Twitter Card   100  twitter:card is "summary_large_image"
+  ✓ Canonical      100  Canonical URL is set
+  ✓ Robots         100  No blocking directives
 
   0 issues found
 
-  Analyzed in 52ms
+  Analyzed in 234ms
   ✓ Pass (exit 0) — grade A
 ```
 
@@ -125,13 +125,13 @@ metapeek — https://github.com
 
   Score: 84/100 (B)
 
-  ⚠ Title          60  Title exceeds 60 characters (61)
-  ⚠ Description    60  Description exceeds 160 characters (186)
-  ✓ Open Graph     100  All required Open Graph tags present
-  ✓ OG Image       100  og:image present with absolute URL
-  ✓ Twitter Card   100  Twitter Card configured
+  ⚠ Title          60  Title is 61 characters
+  ⚠ Description    60  Description is 186 characters
+  ✓ Open Graph     100  All required OG tags present
+  ✓ OG Image       100  og:image is present and absolute
+  ✓ Twitter Card   100  twitter:card is "summary_large_image"
   ⚠ Canonical      60  Trailing slash inconsistency with og:url
-  ✓ Robots         100  No robots restrictions (page will be indexed)
+  ✓ Robots         100  No blocking directives
 
   3 issues found
 
@@ -139,32 +139,34 @@ metapeek — https://github.com
 
   ✗ Title
     • Title exceeds 60 characters (61)
-    → Google may truncate titles longer than 60 characters in search results
+    → Keep the title under 60 characters for best display in search results.
 
   ✗ Description
     • Description exceeds 160 characters (186)
-    → Google may truncate descriptions longer than 160 characters
+    → Keep the meta description under 160 characters for best display in search results.
 
   ✗ Canonical
     • Trailing slash inconsistency with og:url
-    → Canonical lacks trailing slash but og:url has it...
+    → Canonical lacks trailing slash but og:url has it. Choose one format
+      and use it consistently across canonical, og:url, and all meta tags.
 
-  ╭─ Copy for LLM ──────────────────────────────────────────────────────────────────╮
-  │                                                                                 │
-  │  URL: https://github.com                                                        │
-  │  Score: 84/100 (B)                                                              │
-  │                                                                                 │
-  │  Issues:                                                                        │
-  │  - Title exceeds 60 characters (61)                                             │
-  │    Fix: Google may truncate titles longer than 60 characters in search results  │
-  │  - Description exceeds 160 characters (186)                                     │
-  │    Fix: Google may truncate descriptions longer than 160 characters             │
-  │  - Trailing slash inconsistency with og:url                                     │
-  │    Fix: Canonical lacks trailing slash but og:url has it...                     │
-  │                                                                                 │
-  ╰─────────────────────────────────────────────────────────────────────────────────╯
+  ─────────────────────────────────────────────────────────
+  Copy for LLM
+  ─────────────────────────────────────────────────────────
 
-  Analyzed in 286ms
+  URL: https://github.com
+  Score: 84/100 (B)
+
+  Issues:
+  - Title exceeds 60 characters (61)
+    Fix: Keep the title under 60 characters for best display in search results.
+  - Description exceeds 160 characters (186)
+    Fix: Keep the meta description under 160 characters for best display in search results.
+  - Trailing slash inconsistency with og:url
+    Fix: Canonical lacks trailing slash but og:url has it. Choose one format
+    and use it consistently across canonical, og:url, and all meta tags.
+
+  Analyzed in 268ms
   ✓ Pass (exit 0) — grade B
 ```
 
