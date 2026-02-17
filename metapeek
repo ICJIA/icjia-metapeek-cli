@@ -11,8 +11,8 @@ UPDATE_CACHE_MAX_AGE=86400  # 24 hours
 
 check_deps() {
   local missing=()
-  command -v curl >/dev/null 2>&1 || missing+=(curl)
-  command -v jq   >/dev/null 2>&1 || missing+=(jq)
+  command -v python3 >/dev/null 2>&1 || missing+=(python3)
+  command -v jq      >/dev/null 2>&1 || missing+=(jq)
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "Error: missing required dependencies: ${missing[*]}" >&2
     echo "" >&2
