@@ -387,11 +387,13 @@ def analyze(html, page_url):
         cats["canonical"] = {"score": 0, "status": "fail", "issues": ["Missing canonical URL"]}
         diags["canonical"] = {"message": "No canonical URL found", "suggestion": "Add <link rel=\"canonical\" href=\"...\"> to avoid duplicate content issues."}
     else:
-        canon_slash = canonical.rstrip("/")
-        og_url_slash = og_url.rstrip("/") if og_url else ""
-        if og_url and canon_slash != og_url_slash:
+        canon_norm = canonical.rstrip("/")
+        og_norm = og_url.rstrip("/") if og_url else ""
+        if og_url and canon_norm == og_norm and canonical != og_url:
+            c_slash = canonical.endswith("/")
+            o_slash = og_url.endswith("/")
             cats["canonical"] = {"score": 60, "status": "warning", "issues": ["Trailing slash inconsistency with og:url"]}
-            diags["canonical"] = {"message": "Canonical and og:url differ", "suggestion": "Ensure canonical URL and og:url match (including trailing slash)."}
+            diags["canonical"] = {"message": "Trailing slash inconsistency with og:url", "suggestion": f"Canonical {'has' if c_slash else 'lacks'} trailing slash but og:url {'has' if o_slash else 'lacks'} it. Choose one format and use it consistently across canonical, og:url, and all meta tags."}
         else:
             cats["canonical"] = {"score": 100, "status": "pass", "issues": []}
             diags["canonical"] = {"message": f"Canonical URL is set", "suggestion": None}
