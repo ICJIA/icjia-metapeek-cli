@@ -8,6 +8,8 @@ This is the command-line interface for [metapeek](https://metapeek.icjia.app) â€
 
 **Web app source:** https://github.com/ICJIA/icjia-metapeek
 
+![metapeek help output](metapeek-help.png)
+
 ## Platform Support
 
 metapeek requires a Unix shell (bash). It runs on:
