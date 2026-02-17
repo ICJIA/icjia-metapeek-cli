@@ -243,6 +243,215 @@ stop_spinner() {
 
 trap stop_spinner EXIT
 
+# ── Inline Python analyzer ──────────────────────────────────────────────────
+
+analyze_url() {
+  local url="$1"
+  python3 - "$url" "$VERSION" <<'PYEOF'
+import sys, json, time, re
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+from html.parser import HTMLParser
+
+url = sys.argv[1]
+version = sys.argv[2]
+
+MAX_BYTES = 1_048_576  # 1 MB
+
+class MetaParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.title = ""
+        self.in_title = False
+        self.meta = {}          # name/property -> content
+        self.link_canonical = None
+        self.done = False       # stop after </head>
+
+    def handle_starttag(self, tag, attrs):
+        if self.done:
+            return
+        a = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+            self.title = ""
+        elif tag == "meta":
+            content = a.get("content", "")
+            name = a.get("name", "") or a.get("property", "")
+            if name:
+                self.meta[name.lower()] = content
+        elif tag == "link" and a.get("rel", "").lower() == "canonical":
+            self.link_canonical = a.get("href", "")
+
+    def handle_data(self, data):
+        if self.in_title:
+            self.title += data
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+        if tag == "head":
+            self.done = True
+
+def fetch(url):
+    req = Request(url, headers={
+        "User-Agent": f"metapeek/{version} (CLI; +https://github.com/ICJIA/icjia-metapeek-cli)"
+    })
+    resp = urlopen(req, timeout=10)
+    return resp.read(MAX_BYTES).decode("utf-8", errors="replace")
+
+def analyze(html, page_url):
+    p = MetaParser()
+    try:
+        p.feed(html)
+    except Exception:
+        pass
+
+    m = p.meta
+    title_text = p.title.strip()
+    desc = m.get("description", "")
+    robots = m.get("robots", "")
+    canonical = p.link_canonical or m.get("canonical", "")
+
+    og_title = m.get("og:title", "")
+    og_desc  = m.get("og:description", "")
+    og_image = m.get("og:image", "")
+    og_url   = m.get("og:url", "")
+    tw_card  = m.get("twitter:card", "")
+
+    cats = {}
+    diags = {}
+
+    # 1. Title
+    if not title_text:
+        cats["title"] = {"score": 0, "status": "fail", "issues": ["Missing <title> tag"]}
+        diags["title"] = {"message": "Missing <title> tag", "suggestion": "Add a descriptive <title> element inside <head>."}
+    elif len(title_text) > 60:
+        cats["title"] = {"score": 60, "status": "warning", "issues": [f"Title exceeds 60 characters ({len(title_text)})"]}
+        diags["title"] = {"message": f"Title is {len(title_text)} characters", "suggestion": "Keep the title under 60 characters for best display in search results."}
+    else:
+        cats["title"] = {"score": 100, "status": "pass", "issues": []}
+        diags["title"] = {"message": f"Title is {len(title_text)} characters", "suggestion": None}
+
+    # 2. Description
+    if not desc:
+        cats["description"] = {"score": 0, "status": "fail", "issues": ["Missing meta description"]}
+        diags["description"] = {"message": "Missing meta description", "suggestion": "Add <meta name=\"description\" content=\"...\"> to improve SEO and social sharing."}
+    elif len(desc) > 160:
+        cats["description"] = {"score": 60, "status": "warning", "issues": [f"Description exceeds 160 characters ({len(desc)})"]}
+        diags["description"] = {"message": f"Description is {len(desc)} characters", "suggestion": "Keep the meta description under 160 characters for best display in search results."}
+    elif len(desc) < 50:
+        cats["description"] = {"score": 60, "status": "warning", "issues": [f"Description is short ({len(desc)} characters)"]}
+        diags["description"] = {"message": f"Description is {len(desc)} characters", "suggestion": "Aim for at least 50 characters for an effective meta description."}
+    else:
+        cats["description"] = {"score": 100, "status": "pass", "issues": []}
+        diags["description"] = {"message": f"Description is {len(desc)} characters", "suggestion": None}
+
+    # 3. Open Graph tags
+    og_required = {"og:title": og_title, "og:description": og_desc, "og:image": og_image}
+    og_missing = [k for k, v in og_required.items() if not v]
+    if len(og_missing) >= 2:
+        cats["openGraph"] = {"score": 0, "status": "fail", "issues": [f"Missing Open Graph tags: {', '.join(og_missing)}"]}
+        diags["ogTags"] = {"message": f"Missing {len(og_missing)} required OG tags", "suggestion": f"Add {', '.join(og_missing)} meta tags for rich social sharing."}
+    elif len(og_missing) == 1:
+        cats["openGraph"] = {"score": 60, "status": "warning", "issues": [f"Missing Open Graph tag: {og_missing[0]}"]}
+        diags["ogTags"] = {"message": f"Missing {og_missing[0]}", "suggestion": f"Add {og_missing[0]} meta tag for complete social sharing support."}
+    else:
+        cats["openGraph"] = {"score": 100, "status": "pass", "issues": []}
+        diags["ogTags"] = {"message": "All required OG tags present", "suggestion": None}
+
+    # 4. OG Image
+    if not og_image:
+        cats["ogImage"] = {"score": 0, "status": "fail", "issues": ["Missing og:image tag"]}
+        diags["ogImage"] = {"message": "No og:image found", "suggestion": "Add <meta property=\"og:image\" content=\"https://...\"> for social sharing previews."}
+    elif og_image and not og_image.startswith(("http://", "https://")):
+        cats["ogImage"] = {"score": 60, "status": "warning", "issues": ["og:image uses a relative URL"]}
+        diags["ogImage"] = {"message": "og:image is a relative URL", "suggestion": "Use an absolute URL (starting with https://) for og:image."}
+    else:
+        cats["ogImage"] = {"score": 100, "status": "pass", "issues": []}
+        diags["ogImage"] = {"message": "og:image is present and absolute", "suggestion": None}
+
+    # 5. Twitter Card
+    has_og = bool(og_title or og_desc or og_image)
+    if not tw_card and has_og:
+        cats["twitterCard"] = {"score": 0, "status": "fail", "issues": ["Missing twitter:card but has OG tags"]}
+        diags["twitterCard"] = {"message": "No twitter:card meta tag", "suggestion": "Add <meta name=\"twitter:card\" content=\"summary_large_image\"> to control Twitter previews."}
+    elif tw_card:
+        cats["twitterCard"] = {"score": 100, "status": "pass", "issues": []}
+        diags["twitterCard"] = {"message": f"twitter:card is \"{tw_card}\"", "suggestion": None}
+    else:
+        cats["twitterCard"] = {"score": 100, "status": "pass", "issues": []}
+        diags["twitterCard"] = {"message": "No OG tags either; twitter:card not expected", "suggestion": None}
+
+    # 6. Canonical
+    if not canonical:
+        cats["canonical"] = {"score": 0, "status": "fail", "issues": ["Missing canonical URL"]}
+        diags["canonical"] = {"message": "No canonical URL found", "suggestion": "Add <link rel=\"canonical\" href=\"...\"> to avoid duplicate content issues."}
+    else:
+        canon_slash = canonical.rstrip("/")
+        og_url_slash = og_url.rstrip("/") if og_url else ""
+        if og_url and canon_slash != og_url_slash:
+            cats["canonical"] = {"score": 60, "status": "warning", "issues": ["Trailing slash inconsistency with og:url"]}
+            diags["canonical"] = {"message": "Canonical and og:url differ", "suggestion": "Ensure canonical URL and og:url match (including trailing slash)."}
+        else:
+            cats["canonical"] = {"score": 100, "status": "pass", "issues": []}
+            diags["canonical"] = {"message": f"Canonical URL is set", "suggestion": None}
+
+    # 7. Robots
+    if "noindex" in robots.lower():
+        cats["robots"] = {"score": 60, "status": "warning", "issues": ["Robots meta contains noindex"]}
+        diags["robots"] = {"message": "Page is marked noindex", "suggestion": "Remove noindex from robots meta if this page should appear in search results."}
+    else:
+        cats["robots"] = {"score": 100, "status": "pass", "issues": []}
+        diags["robots"] = {"message": "No blocking directives", "suggestion": None}
+
+    # Weighted score
+    weights = {
+        "title": 0.15, "description": 0.15, "openGraph": 0.25,
+        "ogImage": 0.20, "twitterCard": 0.10, "canonical": 0.10, "robots": 0.05
+    }
+    overall = sum(cats[k]["score"] * weights[k] for k in weights)
+    overall = round(overall)
+
+    if   overall >= 90: grade = "A"
+    elif overall >= 80: grade = "B"
+    elif overall >= 70: grade = "C"
+    elif overall >= 60: grade = "D"
+    else:               grade = "F"
+
+    total_issues = sum(len(cats[k]["issues"]) for k in cats)
+
+    return {
+        "score": {
+            "overall": overall,
+            "grade": grade,
+            "totalIssues": total_issues,
+            "categories": cats
+        },
+        "diagnostics": diags
+    }
+
+try:
+    t0 = time.time()
+    html = fetch(url)
+    elapsed = round((time.time() - t0) * 1000)
+
+    result = analyze(html, url)
+    result["ok"] = True
+    result["url"] = url
+    result["timing"] = elapsed
+
+    json.dump(result, sys.stdout, separators=(",", ":"))
+
+except HTTPError as e:
+    json.dump({"ok": False, "message": f"HTTP {e.code}: {e.reason}"}, sys.stdout, separators=(",", ":"))
+except URLError as e:
+    reason = str(e.reason) if hasattr(e, "reason") else str(e)
+    json.dump({"ok": False, "message": reason}, sys.stdout, separators=(",", ":"))
+except Exception as e:
+    json.dump({"ok": False, "message": str(e)}, sys.stdout, separators=(",", ":"))
+PYEOF
+}
+
 # ── API call ─────────────────────────────────────────────────────────────────
 
 check_deps
