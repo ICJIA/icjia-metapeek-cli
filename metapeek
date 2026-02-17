@@ -452,33 +452,27 @@ except Exception as e:
 PYEOF
 }
 
-# ── API call ─────────────────────────────────────────────────────────────────
+# ── Analysis ────────────────────────────────────────────────────────────────
 
 check_deps
 start_spinner
 
-CURL_ARGS=(-s -w "\n%{http_code}" -H "Accept: application/json")
-
-ENCODED_URL=$(printf '%s' "$URL" | jq -sRr @uri)
-ENDPOINT="${API_URL}?url=${ENCODED_URL}"
-
-RAW=$(curl "${CURL_ARGS[@]}" "$ENDPOINT" 2>/dev/null) || {
+RESPONSE=$(analyze_url "$URL") || {
   stop_spinner
-  echo "Error: failed to connect to API at $API_URL" >&2
+  echo "Error: analyzer failed unexpectedly" >&2
   exit 2
 }
 
-HTTP_CODE=$(echo "$RAW" | tail -1)
-RESPONSE=$(echo "$RAW" | sed '$d')
-
 stop_spinner
 
-if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+# Check for analyzer errors
+IS_OK=$(echo "$RESPONSE" | jq -r '.ok' 2>/dev/null)
+if [[ "$IS_OK" != "true" ]]; then
   MSG=$(echo "$RESPONSE" | jq -r '.message // empty' 2>/dev/null | sanitize)
   if [[ -n "$MSG" ]]; then
     echo "Error: $MSG" >&2
   else
-    echo "Error: API returned HTTP $HTTP_CODE" >&2
+    echo "Error: analysis failed" >&2
   fi
   exit 2
 fi
