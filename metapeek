@@ -3,7 +3,6 @@ set -euo pipefail
 
 VERSION="1.1.0"
 REPO_URL="https://github.com/ICJIA/icjia-metapeek-cli.git"
-DEFAULT_API_URL="https://metapeek.icjia.app/api/analyze"
 UPDATE_CACHE_DIR="${HOME}/.cache/metapeek"
 UPDATE_CACHE_FILE="${UPDATE_CACHE_DIR}/latest_version"
 UPDATE_CACHE_MAX_AGE=86400  # 24 hours
@@ -112,8 +111,6 @@ usage() {
   Options:
     --json              Output raw JSON
     --format <type>     Output format: terminal (default) or markdown
-    --api-url <url>     Override API endpoint
-
     --no-color          Disable colored output
     --no-spinner        Disable loading spinner
     --tests             Run test suite
@@ -127,7 +124,6 @@ USAGE
 URL=""
 JSON_MODE=false
 FORMAT="terminal"
-API_URL="$DEFAULT_API_URL"
 
 NO_COLOR=false
 NO_SPINNER=false
@@ -152,10 +148,6 @@ while [[ $# -gt 0 ]]; do
     --format)
       [[ $# -lt 2 ]] && { echo "Error: --format requires an argument" >&2; exit 2; }
       FORMAT="$2"; shift 2 ;;
-    --api-url)
-      [[ $# -lt 2 ]] && { echo "Error: --api-url requires an argument" >&2; exit 2; }
-      API_URL="$2"; shift 2 ;;
-
     --no-color)   NO_COLOR=true; shift ;;
     --no-spinner) NO_SPINNER=true; shift ;;
     -*)
