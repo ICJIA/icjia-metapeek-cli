@@ -29,7 +29,7 @@ The CLI and the web app perform the same core analysis — scoring meta tags acr
 
 ### What the CLI Parses
 
-The CLI extracts 7 categories from the `<head>` section: title, meta description, Open Graph (og:title, og:description, og:image), OG image URL format, Twitter Card, canonical URL, and robots directives.
+The CLI extracts 7 categories from the `<head>` section: title, meta description, Open Graph (og:title, og:description, og:image), OG image URL format and dimensions, Twitter Card, canonical URL, and robots directives. When an og:image is present, the CLI fetches the first 64KB of the image to parse dimensions from PNG, JPEG, GIF, and WebP headers. Images below the recommended 1200x630 minimum trigger a scoring warning.
 
 ### What the Web App Parses
 
@@ -42,11 +42,11 @@ The web app extracts everything the CLI does plus: viewport, theme-color, author
 | Pros | Cons |
 |---|---|
 | Zero infrastructure — runs anywhere with Python 3 and jq | Terminal-only output (no visual previews) |
-| No network dependency beyond the target URL itself | Parses fewer meta tags than the web app |
-| Machine-readable output (JSON, exit codes) for scripting | No image dimension analysis |
-| Works in CI/CD pipelines, pre-commit hooks, and cron jobs | No social preview cards (Facebook, Twitter, LinkedIn) |
-| No rate limits — analyze as many URLs as you want | No browser-based OG image rendering |
-| Offline-capable for testing local dev servers | Requires a Unix shell (bash) |
+| No network dependency beyond the target URL itself | The web app still shows more platform-specific tags (Apple/iOS, Microsoft tile, Pinterest) |
+| Machine-readable output (JSON, exit codes) for scripting | No social preview cards (Facebook, Twitter, LinkedIn) |
+| Works in CI/CD pipelines, pre-commit hooks, and cron jobs | No browser-based OG image rendering |
+| No rate limits — analyze as many URLs as you want | Requires a Unix shell (bash) |
+| Offline-capable for testing local dev servers |  |
 | Single file — no install step, no package manager |  |
 
 **Web App**
@@ -54,11 +54,10 @@ The web app extracts everything the CLI does plus: viewport, theme-color, author
 | Pros | Cons |
 |---|---|
 | Visual social preview cards (Facebook, Twitter, LinkedIn) | Requires internet access to the Netlify-hosted service |
-| Richer metadata extraction (structured data, favicons, Apple/MS tags) | Rate limited to 10 requests per minute |
-| OG image dimension analysis and validation | Cannot be used in CI/CD or automated pipelines |
-| Interactive UI with color-coded diagnostics | No machine-readable output for scripting |
-| No local dependencies — just a browser | Depends on Netlify infrastructure being available |
-| Social card previews show exactly what users will see when sharing | Cannot analyze `localhost` or private network URLs |
+| Richer metadata extraction (Apple/iOS, Microsoft tile, Pinterest tags) | Rate limited to 10 requests per minute |
+| Interactive UI with color-coded diagnostics | Cannot be used in CI/CD or automated pipelines |
+| No local dependencies — just a browser | No machine-readable output for scripting |
+| Social card previews show exactly what users will see when sharing | Depends on Netlify infrastructure being available |
 
 ### Why Use the CLI?
 
@@ -224,10 +223,20 @@ metapeek — https://r3.illinois.gov
   ✓ Title          100  Title is 28 characters
   ✓ Description    100  Description is 135 characters
   ✓ Open Graph     100  All required OG tags present
-  ✓ OG Image       100  og:image is present and absolute
+  ✓ OG Image       100  og:image is present and absolute (1200x630)
   ✓ Twitter Card   100  twitter:card is "summary_large_image"
   ✓ Canonical      100  Canonical URL is set
   ✓ Robots         100  No blocking directives
+
+  Metadata
+
+  title                Restore, Reinvest, Renew: R3
+  description          R3 grants fund programs in Illinois communities that have been harmed by viol...
+  canonical            https://r3.illinois.gov/
+  og:title             Restore, Reinvest, Renew: R3
+  og:image             https://r3.illinois.gov/og-image.png
+  og:image size        1200x630
+  twitter:card         summary_large_image
 
   0 issues found
 
@@ -249,10 +258,20 @@ metapeek — https://github.com
   ⚠ Title          60  Title is 61 characters
   ⚠ Description    60  Description is 186 characters
   ✓ Open Graph     100  All required OG tags present
-  ✓ OG Image       100  og:image is present and absolute
+  ✓ OG Image       100  og:image is present and absolute (1200x630)
   ✓ Twitter Card   100  twitter:card is "summary_large_image"
   ⚠ Canonical      60  Trailing slash inconsistency with og:url
   ✓ Robots         100  No blocking directives
+
+  Metadata
+
+  title                GitHub: Let's build from here · GitHub
+  description          GitHub is where over 100 million developers shape the future of software, tog...
+  canonical            https://github.com
+  og:title             GitHub: Let's build from here
+  og:image             https://github.githubassets.com/assets/campaign-social-031d6161fa10.png
+  og:image size        1200x630
+  twitter:card         summary_large_image
 
   3 issues found
 
@@ -304,6 +323,7 @@ metapeek <url> [options]
 Options:
   --json              Output raw JSON
   --format <type>     Output format: terminal (default) or markdown
+  --full              Show all extracted metadata (default)
   --no-color          Disable colored output
   --no-spinner        Disable loading spinner
   --tests             Run test suite
@@ -324,6 +344,10 @@ metapeek https://github.com --json
 ```bash
 metapeek https://github.com --format markdown
 ```
+
+### Full metadata
+
+All extracted metadata (Open Graph, Twitter Card, image dimensions, favicons, JSON-LD structured data) is shown by default. The `--full` flag is accepted for backward compatibility but has no additional effect.
 
 ### Piping
 
@@ -350,7 +374,7 @@ metapeek is hardened against common attack vectors:
 - **Protocol validation** — Only `http://` and `https://` URLs are accepted; `javascript:`, `data:`, `file://`, `ftp://`, and other schemes are rejected
 - **Strict error handling** — The script runs with `set -euo pipefail` to catch errors early and prevent undefined behavior
 
-All security measures are validated by 9 dedicated security tests in the test suite.
+All security measures are validated by 9 dedicated tests in the test suite.
 
 ## Testing
 
@@ -368,15 +392,17 @@ metapeek includes a comprehensive test suite covering all features and edge case
 
 ### Test Coverage
 
-The test suite includes **56 tests** across 8 categories:
+The test suite includes **66 tests** across 10 categories:
 
-- **Flags & argument parsing** (13 tests) — validates all CLI options, version output, help text
+- **Flags & argument parsing** (14 tests) — validates all CLI options, version output, help text
 - **Error handling** (12 tests) — invalid URLs, missing arguments, unknown options, invalid format values
 - **URL normalization** (5 tests) — protocol prepending, validation of http/https/ftp/mailto/file schemes
 - **Live analysis — terminal output** (10 tests) — score display, category rows, issues section, LLM copy block, exit hints
 - **Live analysis — JSON output** (3 tests) — valid JSON structure, expected fields, no ANSI code leakage
 - **Live analysis — markdown output** (3 tests) — heading format, table structure, result line
 - **No-color output** (1 test) — ANSI escape sequence stripping
+- **Full metadata output** (5 tests) — `--full` flag acceptance, metadata section display, JSON meta key, markdown metadata heading
+- **Image dimension checking** (4 tests) — JSON dimension data, width/height values, terminal and markdown display
 - **Security** (9 tests) — shell injection prevention, control character sanitization, protocol restrictions
 
 Tests analyze `https://r3.illinois.gov` (grade A, no issues) and `https://github.com` (grade B, warnings for title/description length and trailing slash inconsistency) to verify output formatting.
@@ -396,7 +422,7 @@ Passing tests show a green checkmark (✓), failed tests show details:
   ...
 
   ═══════════════════
-  56 passed (56 total)
+  66 passed (66 total)
 ```
 
 ## License

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 REPO_URL="https://github.com/ICJIA/icjia-metapeek-cli.git"
 UPDATE_CACHE_DIR="${HOME}/.cache/metapeek"
 UPDATE_CACHE_FILE="${UPDATE_CACHE_DIR}/latest_version"
@@ -115,6 +115,7 @@ usage() {
   Options:
     --json              Output raw JSON
     --format <type>     Output format: terminal (default) or markdown
+    --full              Show all extracted metadata (default)
     --no-color          Disable colored output
     --no-spinner        Disable loading spinner
     --tests             Run test suite
@@ -128,6 +129,7 @@ USAGE
 URL=""
 JSON_MODE=false
 FORMAT="terminal"
+FULL_MODE=true
 
 NO_COLOR=false
 NO_SPINNER=false
@@ -149,6 +151,7 @@ while [[ $# -gt 0 ]]; do
       fi
       ;;
     --json)       JSON_MODE=true; shift ;;
+    --full)       FULL_MODE=true; shift ;;
     --format)
       [[ $# -lt 2 ]] && { echo "Error: --format requires an argument" >&2; exit 2; }
       FORMAT="$2"; shift 2 ;;
@@ -257,7 +260,7 @@ trap stop_spinner EXIT
 analyze_url() {
   local url="$1"
   python3 - "$url" "$VERSION" <<'PYEOF'
-import sys, json, time
+import sys, json, time, struct
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from html.parser import HTMLParser
@@ -274,6 +277,10 @@ class MetaParser(HTMLParser):
         self.in_title = False
         self.meta = {}          # name/property -> content
         self.link_canonical = None
+        self.links = {}         # rel -> href (favicon, apple-touch-icon, manifest)
+        self.structured_data = []  # parsed JSON-LD objects
+        self.in_jsonld = False
+        self.jsonld_buf = ""
         self.done = False       # stop after </head>
 
     def handle_starttag(self, tag, attrs):
@@ -288,18 +295,40 @@ class MetaParser(HTMLParser):
             name = a.get("name", "") or a.get("property", "")
             if name:
                 self.meta[name.lower()] = content
-        elif tag == "link" and "canonical" in a.get("rel", "").lower().split():
-            self.link_canonical = a.get("href", "")
+        elif tag == "link":
+            rel = a.get("rel", "").lower()
+            href = a.get("href", "")
+            if "canonical" in rel.split():
+                self.link_canonical = href
+            if href:
+                for r in ("icon", "shortcut icon", "apple-touch-icon", "manifest"):
+                    if r in rel:
+                        self.links[r] = href
+                        break
+        elif tag == "script":
+            stype = a.get("type", "").lower()
+            if stype == "application/ld+json":
+                self.in_jsonld = True
+                self.jsonld_buf = ""
 
     def handle_data(self, data):
         if self.done:
             return
         if self.in_title:
             self.title += data
+        if self.in_jsonld:
+            self.jsonld_buf += data
 
     def handle_endtag(self, tag):
         if tag == "title":
             self.in_title = False
+        if tag == "script" and self.in_jsonld:
+            self.in_jsonld = False
+            try:
+                self.structured_data.append(json.loads(self.jsonld_buf))
+            except (json.JSONDecodeError, ValueError):
+                pass
+            self.jsonld_buf = ""
         if tag == "head":
             self.done = True
 
@@ -310,6 +339,85 @@ def fetch(url):
     })
     resp = urlopen(req, timeout=10)
     return resp.read(MAX_BYTES).decode("utf-8", errors="replace")
+
+def parse_png(data):
+    if data[:8] != b'\x89PNG\r\n\x1a\n' or len(data) < 24:
+        return None
+    w, h = struct.unpack('>II', data[16:24])
+    return (w, h)
+
+def parse_jpeg(data):
+    if data[:2] != b'\xff\xd8':
+        return None
+    i = 2
+    while i < len(data) - 9:
+        if data[i] != 0xFF:
+            break
+        marker = data[i + 1]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8):
+            h, w = struct.unpack('>HH', data[i + 5:i + 9])
+            return (w, h)
+        length = struct.unpack('>H', data[i + 2:i + 4])[0]
+        if length < 2:
+            break
+        i += 2 + length
+    return None
+
+def parse_gif(data):
+    if data[:4] not in (b'GIF8', ) or len(data) < 10:
+        return None
+    if data[:6] not in (b'GIF87a', b'GIF89a'):
+        return None
+    w, h = struct.unpack('<HH', data[6:10])
+    return (w, h)
+
+def parse_webp(data):
+    if data[:4] != b'RIFF' or data[8:12] != b'WEBP' or len(data) < 30:
+        return None
+    chunk = data[12:16]
+    if chunk == b'VP8 ' and len(data) >= 30:
+        w = struct.unpack('<H', data[26:28])[0] & 0x3FFF
+        h = struct.unpack('<H', data[28:30])[0] & 0x3FFF
+        return (w, h)
+    elif chunk == b'VP8L' and len(data) >= 25:
+        bits = struct.unpack('<I', data[21:25])[0]
+        w = (bits & 0x3FFF) + 1
+        h = ((bits >> 14) & 0x3FFF) + 1
+        return (w, h)
+    elif chunk == b'VP8X' and len(data) >= 30:
+        w = struct.unpack('<I', data[24:27] + b'\x00')[0] + 1
+        h = struct.unpack('<I', data[27:30] + b'\x00')[0] + 1
+        return (w, h)
+    return None
+
+def get_image_dimensions(data):
+    for parser in (parse_png, parse_jpeg, parse_gif, parse_webp):
+        result = parser(data)
+        if result:
+            return result
+    return None
+
+IMG_MAX_BYTES = 65536  # 64 KB — enough for image headers
+
+def fetch_image_bytes(url):
+    try:
+        req = Request(url, headers={
+            "User-Agent": f"metapeek/{version} (CLI; +https://github.com/ICJIA/icjia-metapeek-cli)",
+            "Accept-Encoding": "identity"
+        })
+        resp = urlopen(req, timeout=4)
+        return resp.read(IMG_MAX_BYTES)
+    except Exception:
+        return None
+
+def fetch_image_dimensions(url):
+    data = fetch_image_bytes(url)
+    if not data:
+        return {"width": None, "height": None, "error": "fetch failed"}
+    dims = get_image_dimensions(data)
+    if dims:
+        return {"width": dims[0], "height": dims[1]}
+    return {"width": None, "height": None, "error": "unrecognized format"}
 
 def analyze(html, page_url):
     p = MetaParser()
@@ -329,6 +437,17 @@ def analyze(html, page_url):
     og_image = m.get("og:image", "")
     og_url   = m.get("og:url", "")
     tw_card  = m.get("twitter:card", "")
+    tw_image = m.get("twitter:image", "")
+
+    # Fetch image dimensions (only for absolute URLs)
+    og_image_dims = None
+    tw_image_dims = None
+    if og_image and og_image.startswith(("http://", "https://")):
+        og_image_dims = fetch_image_dimensions(og_image)
+    if tw_image and tw_image == og_image:
+        tw_image_dims = og_image_dims
+    elif tw_image and tw_image.startswith(("http://", "https://")):
+        tw_image_dims = fetch_image_dimensions(tw_image)
 
     cats = {}
     diags = {}
@@ -379,8 +498,17 @@ def analyze(html, page_url):
         cats["ogImage"] = {"score": 60, "status": "warning", "issues": ["og:image uses a relative URL"]}
         diags["ogImage"] = {"message": "og:image is a relative URL", "suggestion": "Use an absolute URL (starting with https://) for og:image."}
     else:
-        cats["ogImage"] = {"score": 100, "status": "pass", "issues": []}
-        diags["ogImage"] = {"message": "og:image is present and absolute", "suggestion": None}
+        if og_image_dims and og_image_dims.get("width") is not None and og_image_dims.get("height") is not None:
+            w, h = og_image_dims["width"], og_image_dims["height"]
+            if w < 1200 or h < 630:
+                cats["ogImage"] = {"score": 60, "status": "warning", "issues": [f"og:image is {w}x{h}, below recommended 1200x630"]}
+                diags["ogImage"] = {"message": f"og:image is {w}x{h}", "suggestion": "Use an image at least 1200x630 pixels for best social sharing previews."}
+            else:
+                cats["ogImage"] = {"score": 100, "status": "pass", "issues": []}
+                diags["ogImage"] = {"message": f"og:image is present and absolute ({w}x{h})", "suggestion": None}
+        else:
+            cats["ogImage"] = {"score": 100, "status": "pass", "issues": []}
+            diags["ogImage"] = {"message": "og:image is present and absolute (dimensions unavailable)", "suggestion": None}
 
     # 5. Twitter Card
     has_og = bool(og_title or og_desc or og_image)
@@ -434,6 +562,44 @@ def analyze(html, page_url):
 
     total_issues = sum(len(cats[k]["issues"]) for k in cats)
 
+    favicon = p.links.get("icon", "") or p.links.get("shortcut icon", "")
+    apple_touch = p.links.get("apple-touch-icon", "")
+
+    meta_obj = {
+        "title": title_text,
+        "description": desc,
+        "viewport": m.get("viewport", ""),
+        "robots": robots,
+        "canonical": canonical,
+        "themeColor": m.get("theme-color", ""),
+        "author": m.get("author", ""),
+        "keywords": m.get("keywords", ""),
+        "language": m.get("language", "") or m.get("content-language", ""),
+        "generator": m.get("generator", ""),
+        "og": {
+            "title": og_title,
+            "description": og_desc,
+            "image": og_image,
+            "url": og_url,
+            "type": m.get("og:type", ""),
+            "site_name": m.get("og:site_name", ""),
+            "locale": m.get("og:locale", ""),
+            "image_dimensions": og_image_dims
+        },
+        "twitter": {
+            "card": tw_card,
+            "site": m.get("twitter:site", ""),
+            "creator": m.get("twitter:creator", ""),
+            "title": m.get("twitter:title", ""),
+            "description": m.get("twitter:description", ""),
+            "image": tw_image,
+            "image_dimensions": tw_image_dims
+        },
+        "favicon": favicon,
+        "appleTouchIcon": apple_touch,
+        "structuredData": p.structured_data
+    }
+
     return {
         "score": {
             "overall": overall,
@@ -441,7 +607,8 @@ def analyze(html, page_url):
             "totalIssues": total_issues,
             "categories": cats
         },
-        "diagnostics": diags
+        "diagnostics": diags,
+        "meta": meta_obj
     }
 
 try:
@@ -595,6 +762,108 @@ format_terminal() {
 
   echo ""
 
+  # Full metadata display
+  if [[ "$FULL_MODE" == true ]]; then
+    printf '  %sMetadata%s\n' "$BOLD" "$RESET"
+    echo ""
+
+    # Helper: print a metadata row if value is non-empty
+    print_meta_row() {
+      local label="$1" value="$2"
+      [[ -z "$value" || "$value" == "null" ]] && return
+      # Truncate long values
+      if [[ ${#value} -gt 80 ]]; then
+        value="${value:0:77}..."
+      fi
+      printf '  %s%-20s%s %s\n' "$DIM" "$label" "$RESET" "$value"
+    }
+
+    # Basic
+    print_meta_row "title" "$(jq_safe '.meta.title')"
+    print_meta_row "description" "$(jq_safe '.meta.description')"
+    print_meta_row "viewport" "$(jq_safe '.meta.viewport')"
+    print_meta_row "canonical" "$(jq_safe '.meta.canonical')"
+    print_meta_row "robots" "$(jq_safe '.meta.robots')"
+    print_meta_row "author" "$(jq_safe '.meta.author')"
+    print_meta_row "keywords" "$(jq_safe '.meta.keywords')"
+    print_meta_row "language" "$(jq_safe '.meta.language')"
+    print_meta_row "generator" "$(jq_safe '.meta.generator')"
+    print_meta_row "theme-color" "$(jq_safe '.meta.themeColor')"
+
+    # Open Graph
+    local og_title og_desc og_image og_url og_type og_site og_locale
+    og_title=$(jq_safe '.meta.og.title')
+    og_desc=$(jq_safe '.meta.og.description')
+    og_image=$(jq_safe '.meta.og.image')
+    og_url=$(jq_safe '.meta.og.url')
+    og_type=$(jq_safe '.meta.og.type')
+    og_site=$(jq_safe '.meta.og.site_name')
+    og_locale=$(jq_safe '.meta.og.locale')
+    if [[ -n "$og_title" || -n "$og_desc" || -n "$og_image" || -n "$og_url" ]]; then
+      echo ""
+      print_meta_row "og:title" "$og_title"
+      print_meta_row "og:description" "$og_desc"
+      print_meta_row "og:image" "$og_image"
+      local og_iw og_ih
+      og_iw=$(jq_safe '.meta.og.image_dimensions.width')
+      og_ih=$(jq_safe '.meta.og.image_dimensions.height')
+      if [[ -n "$og_iw" && "$og_iw" != "null" && -n "$og_ih" && "$og_ih" != "null" ]]; then
+        print_meta_row "og:image size" "${og_iw}x${og_ih}"
+      fi
+      print_meta_row "og:url" "$og_url"
+      print_meta_row "og:type" "$og_type"
+      print_meta_row "og:site_name" "$og_site"
+      print_meta_row "og:locale" "$og_locale"
+    fi
+
+    # Twitter
+    local tw_card tw_site tw_creator tw_title tw_desc tw_image
+    tw_card=$(jq_safe '.meta.twitter.card')
+    tw_site=$(jq_safe '.meta.twitter.site')
+    tw_creator=$(jq_safe '.meta.twitter.creator')
+    tw_title=$(jq_safe '.meta.twitter.title')
+    tw_desc=$(jq_safe '.meta.twitter.description')
+    tw_image=$(jq_safe '.meta.twitter.image')
+    if [[ -n "$tw_card" || -n "$tw_title" || -n "$tw_image" ]]; then
+      echo ""
+      print_meta_row "twitter:card" "$tw_card"
+      print_meta_row "twitter:site" "$tw_site"
+      print_meta_row "twitter:creator" "$tw_creator"
+      print_meta_row "twitter:title" "$tw_title"
+      print_meta_row "twitter:description" "$tw_desc"
+      print_meta_row "twitter:image" "$tw_image"
+      local tw_iw tw_ih
+      tw_iw=$(jq_safe '.meta.twitter.image_dimensions.width')
+      tw_ih=$(jq_safe '.meta.twitter.image_dimensions.height')
+      if [[ -n "$tw_iw" && "$tw_iw" != "null" && -n "$tw_ih" && "$tw_ih" != "null" ]]; then
+        print_meta_row "twitter:image size" "${tw_iw}x${tw_ih}"
+      fi
+    fi
+
+    # Links
+    local favicon apple_touch
+    favicon=$(jq_safe '.meta.favicon')
+    apple_touch=$(jq_safe '.meta.appleTouchIcon')
+    if [[ -n "$favicon" || -n "$apple_touch" ]]; then
+      echo ""
+      print_meta_row "favicon" "$favicon"
+      print_meta_row "apple-touch-icon" "$apple_touch"
+    fi
+
+    # Structured Data
+    local sd_count
+    sd_count=$(echo "$RESPONSE" | jq '.meta.structuredData | length')
+    if [[ "$sd_count" -gt 0 ]]; then
+      local sd_types
+      sd_types=$(echo "$RESPONSE" | jq -r '[.meta.structuredData[]."@type" // empty] | join(", ")' | sanitize)
+      echo ""
+      print_meta_row "structured data" "${sd_count} JSON-LD block(s)"
+      [[ -n "$sd_types" ]] && print_meta_row "  types" "$sd_types"
+    fi
+
+    echo ""
+  fi
+
   # Issues count
   if [[ "$TOTAL_ISSUES" -eq 0 ]]; then
     printf '  %s%s issues found%s\n' "$GREEN" "$TOTAL_ISSUES" "$RESET"
@@ -728,6 +997,84 @@ format_markdown() {
   done
 
   echo ""
+
+  # Full metadata display
+  if [[ "$FULL_MODE" == true ]]; then
+    echo "## Metadata"
+    echo ""
+    echo "| Tag | Value |"
+    echo "|-----|-------|"
+
+    # Helper: print a markdown table row if value is non-empty
+    md_meta_row() {
+      local label="$1" value="$2"
+      [[ -z "$value" || "$value" == "null" ]] && return
+      # Truncate long values
+      if [[ ${#value} -gt 80 ]]; then
+        value="${value:0:77}..."
+      fi
+      # Escape pipe chars in value
+      value="${value//|/\\|}"
+      printf '| %s | %s |\n' "$label" "$value"
+    }
+
+    # Basic
+    md_meta_row "title" "$(jq_safe '.meta.title')"
+    md_meta_row "description" "$(jq_safe '.meta.description')"
+    md_meta_row "viewport" "$(jq_safe '.meta.viewport')"
+    md_meta_row "canonical" "$(jq_safe '.meta.canonical')"
+    md_meta_row "robots" "$(jq_safe '.meta.robots')"
+    md_meta_row "author" "$(jq_safe '.meta.author')"
+    md_meta_row "keywords" "$(jq_safe '.meta.keywords')"
+    md_meta_row "language" "$(jq_safe '.meta.language')"
+    md_meta_row "generator" "$(jq_safe '.meta.generator')"
+    md_meta_row "theme-color" "$(jq_safe '.meta.themeColor')"
+
+    # Open Graph
+    md_meta_row "og:title" "$(jq_safe '.meta.og.title')"
+    md_meta_row "og:description" "$(jq_safe '.meta.og.description')"
+    md_meta_row "og:image" "$(jq_safe '.meta.og.image')"
+    local md_og_iw md_og_ih
+    md_og_iw=$(jq_safe '.meta.og.image_dimensions.width')
+    md_og_ih=$(jq_safe '.meta.og.image_dimensions.height')
+    if [[ -n "$md_og_iw" && "$md_og_iw" != "null" && -n "$md_og_ih" && "$md_og_ih" != "null" ]]; then
+      md_meta_row "og:image size" "${md_og_iw}x${md_og_ih}"
+    fi
+    md_meta_row "og:url" "$(jq_safe '.meta.og.url')"
+    md_meta_row "og:type" "$(jq_safe '.meta.og.type')"
+    md_meta_row "og:site_name" "$(jq_safe '.meta.og.site_name')"
+    md_meta_row "og:locale" "$(jq_safe '.meta.og.locale')"
+
+    # Twitter
+    md_meta_row "twitter:card" "$(jq_safe '.meta.twitter.card')"
+    md_meta_row "twitter:site" "$(jq_safe '.meta.twitter.site')"
+    md_meta_row "twitter:creator" "$(jq_safe '.meta.twitter.creator')"
+    md_meta_row "twitter:title" "$(jq_safe '.meta.twitter.title')"
+    md_meta_row "twitter:description" "$(jq_safe '.meta.twitter.description')"
+    md_meta_row "twitter:image" "$(jq_safe '.meta.twitter.image')"
+    local md_tw_iw md_tw_ih
+    md_tw_iw=$(jq_safe '.meta.twitter.image_dimensions.width')
+    md_tw_ih=$(jq_safe '.meta.twitter.image_dimensions.height')
+    if [[ -n "$md_tw_iw" && "$md_tw_iw" != "null" && -n "$md_tw_ih" && "$md_tw_ih" != "null" ]]; then
+      md_meta_row "twitter:image size" "${md_tw_iw}x${md_tw_ih}"
+    fi
+
+    # Links
+    md_meta_row "favicon" "$(jq_safe '.meta.favicon')"
+    md_meta_row "apple-touch-icon" "$(jq_safe '.meta.appleTouchIcon')"
+
+    # Structured Data
+    local sd_count
+    sd_count=$(echo "$RESPONSE" | jq '.meta.structuredData | length')
+    if [[ "$sd_count" -gt 0 ]]; then
+      local sd_types
+      sd_types=$(echo "$RESPONSE" | jq -r '[.meta.structuredData[]."@type" // empty] | join(", ")' | sanitize)
+      md_meta_row "structured data" "${sd_count} JSON-LD block(s): ${sd_types}"
+    fi
+
+    echo ""
+  fi
+
   printf '**Issues:** %s\n\n' "$TOTAL_ISSUES"
 
   if [[ "$TOTAL_ISSUES" -gt 0 ]]; then

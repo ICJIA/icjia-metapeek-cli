@@ -103,6 +103,7 @@ assert_stdout_contains "--help shows banner" "metapeek" "$METAPEEK" --help
 assert_stdout_contains "--help shows --json option" "\-\-json" "$METAPEEK" --help
 assert_stdout_contains "--help shows --format option" "\-\-format" "$METAPEEK" --help
 assert_stdout_contains "--help shows --no-color option" "\-\-no-color" "$METAPEEK" --help
+assert_stdout_contains "--help shows --full option" "\-\-full" "$METAPEEK" --help
 assert_stdout_contains "--help shows --no-spinner option" "\-\-no-spinner" "$METAPEEK" --help
 assert_stdout_contains "--help shows --tests option" "\-\-tests" "$METAPEEK" --help
 
@@ -358,7 +359,112 @@ fi
 
 echo ""
 
-# ── 8. Security ──────────────────────────────────────────────────────────────
+# ── 8. Full metadata output ────────────────────────────────────────────────
+
+echo "  Full metadata output"
+echo "  ────────────────────"
+
+if [[ "$OFFLINE" == true ]]; then
+  skip "--full flag is accepted (requires network)"
+  skip "--full output contains Metadata header (requires network)"
+  skip "--full output contains og:title label (requires network)"
+  skip "--full --json has meta key (requires network)"
+  skip "--full --format markdown contains Metadata heading (requires network)"
+else
+  assert_exit "--full flag is accepted" 0 "$METAPEEK" --no-spinner --no-color --full "https://r3.illinois.gov"
+
+  set +e
+  full_output=$("$METAPEEK" --no-spinner --no-color --full "https://r3.illinois.gov" 2>/dev/null)
+  set -e
+
+  if echo "$full_output" | grep -q "Metadata"; then
+    pass "--full output contains Metadata header"
+  else
+    fail "--full output contains Metadata header" "missing Metadata header"
+  fi
+
+  if echo "$full_output" | grep -q "og:title"; then
+    pass "--full output contains og:title label"
+  else
+    fail "--full output contains og:title label" "missing og:title"
+  fi
+
+  set +e
+  full_json=$("$METAPEEK" --no-spinner --full "https://r3.illinois.gov" --json 2>/dev/null)
+  set -e
+
+  if echo "$full_json" | jq -e '.meta' >/dev/null 2>&1; then
+    pass "--full --json has meta key"
+  else
+    fail "--full --json has meta key" "missing .meta in JSON"
+  fi
+
+  set +e
+  full_md=$("$METAPEEK" --no-spinner --no-color --full "https://r3.illinois.gov" --format markdown 2>/dev/null)
+  set -e
+
+  if echo "$full_md" | grep -q "## Metadata"; then
+    pass "--full --format markdown contains Metadata heading"
+  else
+    fail "--full --format markdown contains Metadata heading" "missing ## Metadata"
+  fi
+fi
+
+echo ""
+
+# ── 9. Image dimension checking ──────────────────────────────────────────────
+
+echo "  Image dimension checking"
+echo "  ────────────────────────"
+
+if [[ "$OFFLINE" == true ]]; then
+  skip "JSON contains .meta.og.image_dimensions (requires network)"
+  skip "image_dimensions has width and height values (requires network)"
+  skip "--full terminal shows og:image size (requires network)"
+  skip "--full markdown shows og:image size (requires network)"
+else
+  set +e
+  dim_json=$("$METAPEEK" --no-spinner "https://r3.illinois.gov" --json 2>/dev/null)
+  set -e
+
+  if echo "$dim_json" | jq -e '.meta.og.image_dimensions' >/dev/null 2>&1; then
+    pass "JSON contains .meta.og.image_dimensions"
+  else
+    fail "JSON contains .meta.og.image_dimensions" "missing image_dimensions key"
+  fi
+
+  dim_w=$(echo "$dim_json" | jq -r '.meta.og.image_dimensions.width // empty')
+  dim_h=$(echo "$dim_json" | jq -r '.meta.og.image_dimensions.height // empty')
+  if [[ -n "$dim_w" && "$dim_w" != "null" && -n "$dim_h" && "$dim_h" != "null" ]]; then
+    pass "image_dimensions has width ($dim_w) and height ($dim_h) values"
+  else
+    fail "image_dimensions has width and height values" "width=$dim_w height=$dim_h"
+  fi
+
+  set +e
+  dim_term=$("$METAPEEK" --no-spinner --no-color --full "https://r3.illinois.gov" 2>/dev/null)
+  set -e
+
+  if echo "$dim_term" | grep -q "og:image size"; then
+    pass "--full terminal shows og:image size"
+  else
+    fail "--full terminal shows og:image size" "missing og:image size row"
+  fi
+
+  set +e
+  dim_md=$("$METAPEEK" --no-spinner --no-color --full "https://r3.illinois.gov" --format markdown 2>/dev/null)
+  set -e
+
+  if echo "$dim_md" | grep -q "og:image size"; then
+    pass "--full markdown shows og:image size"
+  else
+    fail "--full markdown shows og:image size" "missing og:image size row"
+  fi
+fi
+
+echo ""
+
+# ── 10. Security ─────────────────────────────────────────────────────────────
 
 echo "  Security"
 echo "  ────────"
